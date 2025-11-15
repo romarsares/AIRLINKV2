@@ -6,6 +6,8 @@ Smart bracelet-based boarding verification system for airports that synchronizes
 
 AirLink provides seamless communication between airports, airlines, and passengers using IoT bracelets that sync real-time flight information, support digital boarding, and enhance accessibility for all travelers.
 
+**Deployment**: Local airport infrastructure with external airline API integration only.
+
 ### Core Components
 
 - **Bracelet Device**: Stores passenger & flight data, handles local verification
