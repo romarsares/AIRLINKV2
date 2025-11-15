@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AirLink Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Login Screen -->
+        <div id="loginScreen" class="screen active">
+            <div class="login-container">
+                <div class="login-header">
+                    <h1>AirLink System</h1>
+                    <p>Smart Bracelet Boarding Verification</p>
+                </div>
+                <form id="loginForm" class="login-form">
+                    <div class="form-group">
+                        <label for="role">Role</label>
+                        <select id="role" required>
+                            <option value="">Select Role</option>
+                            <option value="Admin">Admin</option>
+                            <option value="Operator">Operator</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn-primary">Login</button>
+                    <div id="loginError" class="error-message"></div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Dashboard Screen -->
+        <div id="dashboardScreen" class="screen">
+            <header class="header">
+                <div class="header-left">
+                    <h1>AirLink Dashboard</h1>
+                    <span id="userRole" class="user-role"></span>
+                </div>
+                <div class="header-right">
+                    <span id="currentTime" class="time"></span>
+                    <button id="logoutBtn" class="btn-secondary">Logout</button>
+                </div>
+            </header>
+
+            <nav class="nav">
+                <button class="nav-btn active" data-section="overview">Overview</button>
+                <button class="nav-btn" data-section="bookings">Bookings</button>
+                <button class="nav-btn" data-section="bracelets">Bracelets</button>
+                <button class="nav-btn" data-section="logs" id="logsTab">Sync Logs</button>
+            </nav>
+
+            <main class="main">
+                <!-- Overview Section -->
+                <section id="overview" class="section active">
+                    <div class="cards">
+                        <div class="card">
+                            <h3>Total Bookings</h3>
+                            <div class="card-value" id="totalBookings">-</div>
+                        </div>
+                        <div class="card">
+                            <h3>Active Flights</h3>
+                            <div class="card-value" id="activeFlights">-</div>
+                        </div>
+                        <div class="card">
+                            <h3>Active Bracelets</h3>
+                            <div class="card-value" id="activeBracelets">-</div>
+                        </div>
+                        <div class="card">
+                            <h3>Recent Syncs</h3>
+                            <div class="card-value" id="recentSyncs">-</div>
+                        </div>
+                    </div>
+                    <div class="actions">
+                        <button id="refreshOverview" class="btn-primary">Refresh</button>
+                        <button id="forceSync" class="btn-secondary" style="display:none;">Force Sync</button>
+                    </div>
+                </section>
+
+                <!-- Bookings Section -->
+                <section id="bookings" class="section">
+                    <div class="section-header">
+                        <h2>Flight Bookings</h2>
+                        <button id="createBookingBtn" class="btn-primary">Create Booking</button>
+                    </div>
+                    <div class="search-bar">
+                        <input type="text" id="bookingSearch" placeholder="Search by Booking ID...">
+                        <button id="searchBookingBtn" class="btn-secondary">Search</button>
+                    </div>
+                    <div id="bookingResult" class="result-container"></div>
+                </section>
+
+                <!-- Bracelets Section -->
+                <section id="bracelets" class="section">
+                    <div class="section-header">
+                        <h2>Bracelet Management</h2>
+                    </div>
+                    <div class="bracelet-actions">
+                        <div class="action-group">
+                            <h3>Assign Bracelet</h3>
+                            <div class="form-row">
+                                <input type="number" id="assignBookingId" placeholder="Booking ID">
+                                <input type="text" id="assignBraceletId" placeholder="Bracelet ID">
+                                <button id="assignBtn" class="btn-primary">Assign</button>
+                            </div>
+                        </div>
+                        <div class="action-group">
+                            <h3>Verify Boarding</h3>
+                            <div class="form-row">
+                                <input type="text" id="verifyBraceletId" placeholder="Bracelet ID">
+                                <input type="text" id="verifyGateNo" placeholder="Gate Number">
+                                <button id="verifyBtn" class="btn-primary">Verify</button>
+                            </div>
+                        </div>
+                        <div class="action-group">
+                            <h3>Bracelet Status</h3>
+                            <div class="form-row">
+                                <input type="text" id="statusBraceletId" placeholder="Bracelet ID">
+                                <button id="statusBtn" class="btn-secondary">Check Status</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="braceletResult" class="result-container"></div>
+                </section>
+
+                <!-- Sync Logs Section -->
+                <section id="logs" class="section">
+                    <div class="section-header">
+                        <h2>Sync Logs</h2>
+                        <select id="logFilter">
+                            <option value="all">All Logs</option>
+                            <option value="failed">Failed Only</option>
+                        </select>
+                    </div>
+                    <div id="logsResult" class="logs-container"></div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/dashboard.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
