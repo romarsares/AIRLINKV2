@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 // Import route modules
+const authRoutes = require('./auth');
 const bookingsRoutes = require('./bookings');
 const braceletsRoutes = require('./bracelets');
 const adminRoutes = require('./admin');
@@ -16,6 +17,7 @@ router.get('/health', (req, res) => {
 });
 
 // API routes
+router.use('/auth', authRoutes);
 router.use('/bookings', bookingsRoutes);
 router.use('/bracelets', braceletsRoutes);
 router.use('/admin', adminRoutes);

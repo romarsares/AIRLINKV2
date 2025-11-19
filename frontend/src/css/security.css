@@ -1,0 +1,47 @@
+/* Security-focused CSS additions */
+
+/* Field error styling */
+.field-error {
+    display: none;
+    color: #e74c3c;
+    font-size: 0.875rem;
+    margin-top: 0.25rem;
+    padding: 0.25rem 0;
+}
+
+/* Form validation states */
+.form-group input:invalid {
+    border-color: #e74c3c;
+    box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.1);
+}
+
+.form-group input:valid {
+    border-color: #27ae60;
+}
+
+/* Disabled button state */
+.btn-primary:disabled {
+    background-color: #95a5a6;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* Security headers - prevent text selection on sensitive elements */
+.login-form input[type="password"] {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+/* Hide autocomplete dropdown styling */
+.login-form input:-webkit-autofill {
+    -webkit-box-shadow: 0 0 0 30px white inset;
+    -webkit-text-fill-color: #333;
+}
+
+/* Error message accessibility */
+.error-message[role="alert"] {
+    position: relative;
+    z-index: 1000;
+}
