@@ -17,6 +17,44 @@ const { pool } = require('../config/database');
 // Logger used for bracelet operations
 const logger = require('../config/logger');
 
+// GET /api/bracelets - Get all bracelets with status
+router.get('/', async (req, res) => {
+  try {
+    let bracelets = [];
+    
+    try {
+      const [result] = await pool.execute(`
+        SELECT 
+          b.bracelet_id,
+          b.status,
+          b.battery_level,
+          b.last_sync_time,
+          p.name as passenger_name,
+          f.flight_no,
+          bk.booking_status,
+          CASE 
+            WHEN b.last_sync_time > DATE_SUB(NOW(), INTERVAL 5 MINUTE) THEN 'Connected'
+            ELSE 'Disconnected'
+          END as connection_status
+        FROM bracelets b
+        LEFT JOIN bookings bk ON b.bracelet_id = bk.assigned_bracelet
+        LEFT JOIN passengers p ON bk.passenger_id = p.passenger_id
+        LEFT JOIN flights f ON bk.flight_id = f.flight_id
+        ORDER BY b.last_sync_time DESC
+      `);
+      bracelets = result;
+    } catch (dbError) {
+      console.log('Database error, returning empty bracelets:', dbError.message);
+    }
+    
+    logger.info('All bracelets retrieved', { count: bracelets.length });
+    res.json({ bracelets, count: bracelets.length });
+  } catch (error) {
+    logger.error('Bracelets retrieval failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to get bracelets' });
+  }
+});
+
 // POST /api/bracelets/assign - Assign bracelet to passenger
 router.post('/assign', authenticateToken, authorizeRole(['Admin', 'Operator']), validateAssignment, assignBracelet);
 

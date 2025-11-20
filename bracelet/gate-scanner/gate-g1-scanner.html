@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AirLink Gate G1 Scanner</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #1e3c72, #2a5298); color: white; height: 100vh; display: flex; flex-direction: column; }
+        .header { background: rgba(0,0,0,0.3); padding: 20px; text-align: center; border-bottom: 2px solid rgba(255,255,255,0.2); }
+        .header h1 { font-size: 2.5em; margin-bottom: 10px; }
+        .gate-info { font-size: 1.2em; opacity: 0.9; }
+        .scanner-area { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 40px; }
+        .scan-zone { width: 300px; height: 300px; border: 4px dashed #fff; border-radius: 20px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin-bottom: 30px; position: relative; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { border-color: rgba(255,255,255,0.5); } 50% { border-color: rgba(255,255,255,1); } 100% { border-color: rgba(255,255,255,0.5); } }
+        .scan-icon { font-size: 4em; margin-bottom: 20px; }
+        .scan-text { font-size: 1.5em; text-align: center; }
+        .manual-input { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        .manual-input input { width: 300px; padding: 15px; font-size: 1.2em; border: none; border-radius: 5px; margin-right: 10px; }
+        .btn { padding: 15px 30px; font-size: 1.1em; border: none; border-radius: 5px; cursor: pointer; transition: all 0.3s; }
+        .btn-primary { background: #28a745; color: white; }
+        .btn-primary:hover { background: #218838; }
+        .result-area { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); padding: 40px; border-radius: 15px; text-align: center; display: none; z-index: 1000; min-width: 400px; }
+        .result-success { border: 3px solid #28a745; }
+        .result-error { border: 3px solid #dc3545; }
+        .result-icon { font-size: 5em; margin-bottom: 20px; }
+        .success-icon { color: #28a745; }
+        .error-icon { color: #dc3545; }
+        .passenger-info { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; margin: 20px 0; text-align: left; }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 1.1em; }
+        .close-btn { background: #6c757d; color: white; margin-top: 20px; }
+        .status-bar { background: rgba(0,0,0,0.3); padding: 15px; text-align: center; font-size: 1.1em; }
+        .scanning { border-color: #ffc107 !important; animation: scanning 1s infinite; }
+        @keyframes scanning { 0% { border-color: #ffc107; } 50% { border-color: #fff; } 100% { border-color: #ffc107; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🛫 AirLink Gate G1 Scanner</h1>
+        <div class="gate-info">Gate G1 - General Santos International Airport</div>
+    </div>
+    <div class="scanner-area">
+        <div class="scan-zone" id="scanZone">
+            <div class="scan-icon">📱</div>
+            <div class="scan-text">Tap bracelet here<br>or scan RFID/NFC</div>
+        </div>
+        <div class="manual-input">
+            <input type="text" id="braceletId" placeholder="Enter Bracelet ID manually" maxlength="20">
+            <button class="btn btn-primary" onclick="manualScan()">Verify</button>
+        </div>
+    </div>
+    <div class="status-bar" id="statusBar">Ready to scan - Tap bracelet on scanner area</div>
+    <div class="result-area" id="resultArea">
+        <div class="result-icon" id="resultIcon">✅</div>
+        <h2 id="resultTitle">Boarding Approved</h2>
+        <div class="passenger-info" id="passengerInfo">
+            <div class="info-row"><span>Passenger:</span><span id="passengerName">-</span></div>
+            <div class="info-row"><span>Flight:</span><span id="flightNo">-</span></div>
+            <div class="info-row"><span>Destination:</span><span id="destination">-</span></div>
+            <div class="info-row"><span>Seat:</span><span id="seatNo">-</span></div>
+            <div class="info-row"><span>Status:</span><span id="boardingStatus">-</span></div>
+        </div>
+        <button class="btn close-btn" onclick="closeResult()">Continue Scanning</button>
+    </div>
+    <script>
+        const API_BASE = 'http://localhost:3000/api';
+        let isScanning = false;
+        document.getElementById('scanZone').addEventListener('click', function() { if (!isScanning) { simulateScan(); } });
+        document.getElementById('braceletId').addEventListener('keypress', function(e) { if (e.key === 'Enter') { manualScan(); } });
+        function simulateScan() { const testBraceletId = 'GES001'; performVerification(testBraceletId); }
+        function manualScan() { const braceletId = document.getElementById('braceletId').value.trim(); if (!braceletId) { updateStatus('Please enter a bracelet ID', 'error'); return; } performVerification(braceletId); }
+        async function performVerification(braceletId) {
+            if (isScanning) return;
+            isScanning = true;
+            updateStatus('Scanning bracelet...', 'scanning');
+            try {
+                const statusResponse = await fetch(`${API_BASE}/bracelets/${braceletId}/status`);
+                if (!statusResponse.ok) { throw new Error('Bracelet not found'); }
+                const statusData = await statusResponse.json();
+                const verifyResponse = await fetch(`${API_BASE}/bracelets/verify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bracelet_id: braceletId, gate_no: 'G1', timestamp: new Date().toISOString() })
+                });
+                const verifyData = await verifyResponse.json();
+                if (verifyData.verified) {
+                    showResult(true, statusData, verifyData.message);
+                } else {
+                    showResult(false, statusData, verifyData.message);
+                }
+            } catch (error) {
+                console.error('Verification error:', error);
+                showResult(false, null, 'Bracelet not found or system error');
+            }
+            isScanning = false;
+            updateStatus('Ready to scan - Tap bracelet on scanner area');
+        }
+        function showResult(success, passengerData, status) {
+            const resultArea = document.getElementById('resultArea');
+            const resultIcon = document.getElementById('resultIcon');
+            const resultTitle = document.getElementById('resultTitle');
+            if (success) {
+                resultArea.className = 'result-area result-success';
+                resultIcon.textContent = '✅';
+                resultIcon.className = 'result-icon success-icon';
+                resultTitle.textContent = 'Boarding Approved';
+                playSound('success');
+            } else {
+                resultArea.className = 'result-area result-error';
+                resultIcon.textContent = '❌';
+                resultIcon.className = 'result-icon error-icon';
+                resultTitle.textContent = 'Boarding Denied';
+                playSound('error');
+            }
+            if (passengerData) {
+                document.getElementById('passengerName').textContent = passengerData.passenger_name || '-';
+                document.getElementById('flightNo').textContent = passengerData.flight_no || '-';
+                document.getElementById('destination').textContent = passengerData.destination || '-';
+                document.getElementById('seatNo').textContent = passengerData.seat_no || '-';
+                document.getElementById('boardingStatus').textContent = status || '-';
+            }
+            resultArea.style.display = 'block';
+            document.getElementById('braceletId').value = '';
+        }
+        function closeResult() { document.getElementById('resultArea').style.display = 'none'; }
+        function updateStatus(message, type = 'normal') {
+            const statusBar = document.getElementById('statusBar');
+            const scanZone = document.getElementById('scanZone');
+            statusBar.textContent = message;
+            if (type === 'scanning') { scanZone.classList.add('scanning'); } else { scanZone.classList.remove('scanning'); }
+        }
+        function playSound(type) {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            if (type === 'success') {
+                playBeep(audioContext, 800, 150);
+                setTimeout(() => playBeep(audioContext, 800, 150), 200);
+            } else {
+                playBeep(audioContext, 400, 500);
+            }
+        }
+        function playBeep(audioContext, frequency, duration) {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            oscillator.frequency.value = frequency;
+            oscillator.type = 'sine';
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration / 1000);
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration / 1000);
+        }
+        function updateTime() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString();
+            document.querySelector('.gate-info').innerHTML = `Gate G1 - General Santos International Airport<br>Current Time: ${timeString}`;
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+        console.log('AirLink Gate G1 Scanner Ready');
+        console.log('Click scan zone to test with default bracelet (GES001)');
+    </script>
+</body>
+</html>

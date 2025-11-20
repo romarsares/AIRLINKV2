@@ -41,7 +41,14 @@ class App {
             
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            const role = document.getElementById('role').value;
+            
+            // Auto-set role based on username
+            let role = 'Operator'; // Default role
+            if (username.toLowerCase() === 'admin') {
+                role = 'Admin';
+            }
+            document.getElementById('role').value = role;
+            
             const loginBtn = document.getElementById('loginBtn');
             
             // Clear previous errors
@@ -110,8 +117,8 @@ class App {
             isValid = false;
         }
         
+        // Role is auto-set, so just validate it exists
         if (!role || !['Admin', 'Operator'].includes(role)) {
-            this.showFieldError('roleError', 'Please select a valid role');
             isValid = false;
         }
         

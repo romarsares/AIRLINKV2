@@ -63,11 +63,12 @@ router.post('/login', loginLimiter, async (req, res) => {
         
         // Query MySQL database for user with prepared statement
         const [rows] = await connection.execute(
-            'SELECT user_id, username, password, role FROM users WHERE LOWER(username) = ? AND password = ? AND role = ?',
-            [sanitizedUsername, hashedPassword, role]
+            'SELECT user_id, username, password_hash, role FROM users WHERE LOWER(username) = ? AND is_active = TRUE',
+            [sanitizedUsername]
         );
-
-        if (rows.length === 0) {
+        
+        // Verify password and role
+        if (rows.length === 0 || rows[0].password_hash !== hashedPassword || rows[0].role !== role) {
             logger.warn(`Failed login attempt from ${clientIP} for user: ${sanitizedUsername}`);
             // Consistent response time to prevent timing attacks
             await new Promise(resolve => setTimeout(resolve, 1000));

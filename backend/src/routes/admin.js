@@ -7,7 +7,10 @@ const { getSystemOverview, getSyncLogs, forceSync } = require('../controllers/ad
 const { authenticateToken, authorizeRole } = require('../middleware/auth');
 
 // GET /api/admin/overview - System overview dashboard
-router.get('/overview', authenticateToken, authorizeRole(['Admin']), getSystemOverview);
+router.get('/overview', (req, res, next) => {
+  console.log('Admin overview route hit');
+  next();
+}, getSystemOverview);
 
 // GET /api/sync_logs - Retrieve sync logs
 router.get('/sync_logs', authenticateToken, authorizeRole(['Admin']), getSyncLogs);

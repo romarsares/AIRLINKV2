@@ -84,7 +84,7 @@ class Auth {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
             
-            const response = await fetch('http://localhost:3002/api/auth/login', {
+            const response = await fetch('http://localhost:3000/api/auth/login', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -153,7 +153,7 @@ class Auth {
         try {
             // Call backend logout endpoint
             if (this.token) {
-                await fetch('http://localhost:3002/api/auth/logout', {
+                await fetch('http://localhost:3000/api/auth/logout', {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${this.token}`,
