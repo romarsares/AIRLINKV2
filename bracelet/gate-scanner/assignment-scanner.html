@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AirLink Bracelet Assignment Scanner</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #2d5016, #4a7c59); color: white; height: 100vh; display: flex; flex-direction: column; }
+        .header { background: rgba(0,0,0,0.3); padding: 20px; text-align: center; border-bottom: 2px solid rgba(255,255,255,0.2); }
+        .header h1 { font-size: 2.5em; margin-bottom: 10px; }
+        .station-info { font-size: 1.2em; opacity: 0.9; }
+        .scanner-area { flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 40px; }
+        .scan-zone { width: 300px; height: 300px; border: 4px dashed #fff; border-radius: 20px; display: flex; flex-direction: column; justify-content: center; align-items: center; margin-bottom: 30px; position: relative; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { border-color: rgba(255,255,255,0.5); } 50% { border-color: rgba(255,255,255,1); } 100% { border-color: rgba(255,255,255,0.5); } }
+        .scan-icon { font-size: 4em; margin-bottom: 20px; }
+        .scan-text { font-size: 1.5em; text-align: center; }
+        .manual-input { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+        .manual-input input { width: 200px; padding: 15px; font-size: 1.1em; border: none; border-radius: 5px; }
+        .btn { padding: 15px 30px; font-size: 1.1em; border: none; border-radius: 5px; cursor: pointer; transition: all 0.3s; }
+        .btn-primary { background: #28a745; color: white; }
+        .btn-primary:hover { background: #218838; }
+        .btn-secondary { background: #17a2b8; color: white; }
+        .btn-secondary:hover { background: #138496; }
+        .result-area { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.9); padding: 40px; border-radius: 15px; text-align: center; display: none; z-index: 1000; min-width: 400px; }
+        .result-success { border: 3px solid #28a745; }
+        .result-error { border: 3px solid #dc3545; }
+        .result-icon { font-size: 5em; margin-bottom: 20px; }
+        .success-icon { color: #28a745; }
+        .error-icon { color: #dc3545; }
+        .assignment-info { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; margin: 20px 0; text-align: left; }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 1.1em; }
+        .close-btn { background: #6c757d; color: white; margin-top: 20px; }
+        .status-bar { background: rgba(0,0,0,0.3); padding: 15px; text-align: center; font-size: 1.1em; }
+        .scanning { border-color: #ffc107 !important; animation: scanning 1s infinite; }
+        @keyframes scanning { 0% { border-color: #ffc107; } 50% { border-color: #fff; } 100% { border-color: #ffc107; } }
+        .passenger-search { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        .search-results { max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 5px; margin-top: 10px; }
+        .passenger-item { padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1); cursor: pointer; transition: background 0.3s; }
+        .passenger-item:hover { background: rgba(255,255,255,0.1); }
+        .passenger-item:last-child { border-bottom: none; }
+        .connection-status { background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        .bracelet-list { max-height: 150px; overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 5px; margin-top: 10px; }
+        .bracelet-item { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .bracelet-item:hover { background: rgba(255,255,255,0.1); }
+        .status-connected { color: #28a745; }
+        .status-disconnected { color: #dc3545; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎫 AirLink Bracelet Assignment</h1>
+        <div class="station-info" id="stationInfo">
+            Check-in Counter - General Santos International Airport
+        </div>
+    </div>
+
+    <div class="scanner-area">
+        <div class="scan-zone" id="scanZone">
+            <div class="scan-icon">⌚</div>
+            <div class="scan-text">
+                Tap bracelet here<br>
+                to assign passenger
+            </div>
+        </div>
+
+        <div class="passenger-search">
+            <input type="text" id="passengerSearch" placeholder="Search passenger by name or booking ID" style="width: 300px; padding: 10px; border: none; border-radius: 5px;">
+            <button class="btn btn-secondary" onclick="searchPassengers()">Search</button>
+            <div class="search-results" id="searchResults" style="display: none;"></div>
+        </div>
+
+        <div class="connection-status">
+            <button class="btn btn-secondary" onclick="loadConnectedBracelets()">Show Connected Bracelets</button>
+            <div class="bracelet-list" id="braceletList" style="display: none;"></div>
+        </div>
+
+        <div class="manual-input">
+            <input type="text" id="braceletId" placeholder="Bracelet ID (e.g., GES001)" maxlength="20">
+            <input type="text" id="bookingId" placeholder="Booking ID" maxlength="20">
+            <button class="btn btn-primary" onclick="manualAssignment()">Assign Bracelet</button>
+        </div>
+    </div>
+
+    <div class="status-bar" id="statusBar">
+        Ready to assign - Search passenger and tap bracelet
+    </div>
+
+    <!-- Result Modal -->
+    <div class="result-area" id="resultArea">
+        <div class="result-icon" id="resultIcon">✅</div>
+        <h2 id="resultTitle">Assignment Successful</h2>
+        
+        <div class="assignment-info" id="assignmentInfo">
+            <div class="info-row">
+                <span>Passenger:</span>
+                <span id="assignedPassenger">-</span>
+            </div>
+            <div class="info-row">
+                <span>Flight:</span>
+                <span id="assignedFlight">-</span>
+            </div>
+            <div class="info-row">
+                <span>Destination:</span>
+                <span id="assignedDestination">-</span>
+            </div>
+            <div class="info-row">
+                <span>Seat:</span>
+                <span id="assignedSeat">-</span>
+            </div>
+            <div class="info-row">
+                <span>Bracelet:</span>
+                <span id="assignedBracelet">-</span>
+            </div>
+        </div>
+
+        <button class="btn close-btn" onclick="closeResult()">Continue Assignment</button>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3000/api';
+        let isScanning = false;
+        let selectedBooking = null;
+
+        // Simulate NFC/RFID scanning
+        document.getElementById('scanZone').addEventListener('click', function() {
+            if (!isScanning && selectedBooking) {
+                simulateScan();
+            } else if (!selectedBooking) {
+                updateStatus('Please select a passenger first', 'error');
+            }
+        });
+
+        // Handle Enter key in inputs
+        document.getElementById('braceletId').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                manualAssignment();
+            }
+        });
+
+        document.getElementById('bookingId').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                manualAssignment();
+            }
+        });
+
+        document.getElementById('passengerSearch').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                searchPassengers();
+            }
+        });
+
+        function simulateScan() {
+            // Simulate scanning a bracelet
+            const testBraceletId = 'GES002'; // Default test bracelet
+            performAssignment(testBraceletId, selectedBooking.booking_id);
+        }
+
+        function manualAssignment() {
+            const braceletId = document.getElementById('braceletId').value.trim();
+            const bookingId = document.getElementById('bookingId').value.trim();
+            
+            if (!braceletId) {
+                updateStatus('Please enter a bracelet ID', 'error');
+                return;
+            }
+
+            if (!bookingId && !selectedBooking) {
+                updateStatus('Please enter booking ID or select passenger', 'error');
+                return;
+            }
+
+            const finalBookingId = bookingId || selectedBooking.booking_id;
+            performAssignment(braceletId, finalBookingId);
+        }
+
+        async function searchPassengers() {
+            const searchTerm = document.getElementById('passengerSearch').value.trim();
+            
+            if (!searchTerm) {
+                updateStatus('Please enter search term', 'error');
+                return;
+            }
+
+            try {
+                updateStatus('Searching passengers...', 'scanning');
+                
+                const response = await fetch(`${API_BASE}/passengers`);
+                const passengers = await response.json();
+                
+                // Filter passengers by search term
+                const filtered = passengers.filter(p => 
+                    (p.name && p.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                    (p.booking_id && p.booking_id.toString().includes(searchTerm)) ||
+                    (p.flight_no && p.flight_no.toLowerCase().includes(searchTerm.toLowerCase()))
+                );
+
+                displaySearchResults(filtered);
+                updateStatus('Search completed');
+                
+            } catch (error) {
+                console.error('Search error:', error);
+                updateStatus('Search failed - server error', 'error');
+            }
+        }
+
+        function displaySearchResults(passengers) {
+            const resultsDiv = document.getElementById('searchResults');
+            
+            if (passengers.length === 0) {
+                resultsDiv.innerHTML = '<div class="passenger-item">No passengers found</div>';
+                resultsDiv.style.display = 'block';
+                return;
+            }
+
+            resultsDiv.innerHTML = '';
+            
+            passengers.forEach(passenger => {
+                if (passenger.booking_id) { // Only show passengers with bookings
+                    const item = document.createElement('div');
+                    item.className = 'passenger-item';
+                    item.innerHTML = `
+                        <strong>${passenger.name}</strong><br>
+                        Flight: ${passenger.flight_no || 'N/A'} | Seat: ${passenger.seat_no || 'N/A'}<br>
+                        Booking ID: ${passenger.booking_id} | Status: ${passenger.booking_status || 'N/A'}
+                    `;
+                    
+                    item.onclick = () => selectPassenger(passenger);
+                    resultsDiv.appendChild(item);
+                }
+            });
+            
+            resultsDiv.style.display = 'block';
+        }
+
+        function selectPassenger(passenger) {
+            selectedBooking = passenger;
+            document.getElementById('passengerSearch').value = passenger.name;
+            document.getElementById('bookingId').value = passenger.booking_id;
+            document.getElementById('searchResults').style.display = 'none';
+            
+            updateStatus(`Selected: ${passenger.name} - Flight ${passenger.flight_no}`, 'success');
+        }
+
+        async function performAssignment(braceletId, bookingId) {
+            if (isScanning) return;
+            
+            isScanning = true;
+            updateStatus('Assigning bracelet...', 'scanning');
+            
+            try {
+                const response = await fetch(`${API_BASE}/bracelets/assign`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        booking_id: bookingId,
+                        bracelet_id: braceletId
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Get updated booking info
+                    const bookingResponse = await fetch(`${API_BASE}/bookings/${bookingId}`);
+                    const bookingData = await bookingResponse.json();
+                    
+                    showResult(true, bookingData, braceletId);
+                } else {
+                    showResult(false, null, data.error || 'Assignment failed');
+                }
+
+            } catch (error) {
+                console.error('Assignment error:', error);
+                showResult(false, null, 'Assignment failed - server error');
+            }
+            
+            isScanning = false;
+            updateStatus('Ready to assign - Search passenger and tap bracelet');
+        }
+
+        function showResult(success, bookingData, braceletIdOrError) {
+            const resultArea = document.getElementById('resultArea');
+            const resultIcon = document.getElementById('resultIcon');
+            const resultTitle = document.getElementById('resultTitle');
+            
+            if (success) {
+                resultArea.className = 'result-area result-success';
+                resultIcon.textContent = '✅';
+                resultIcon.className = 'result-icon success-icon';
+                resultTitle.textContent = 'Assignment Successful';
+                
+                // Play success sound
+                playSound('success');
+                
+                // Update assignment information
+                document.getElementById('assignedPassenger').textContent = bookingData.passenger_name || '-';
+                document.getElementById('assignedFlight').textContent = bookingData.flight_no || '-';
+                document.getElementById('assignedDestination').textContent = bookingData.destination || '-';
+                document.getElementById('assignedSeat').textContent = bookingData.seat_no || '-';
+                document.getElementById('assignedBracelet').textContent = braceletIdOrError || '-';
+                
+            } else {
+                resultArea.className = 'result-area result-error';
+                resultIcon.textContent = '❌';
+                resultIcon.className = 'result-icon error-icon';
+                resultTitle.textContent = 'Assignment Failed';
+                
+                // Play error sound
+                playSound('error');
+                
+                // Show error message
+                document.getElementById('assignedPassenger').textContent = braceletIdOrError;
+                document.getElementById('assignedFlight').textContent = '-';
+                document.getElementById('assignedDestination').textContent = '-';
+                document.getElementById('assignedSeat').textContent = '-';
+                document.getElementById('assignedBracelet').textContent = '-';
+            }
+
+            resultArea.style.display = 'block';
+            
+            // Clear inputs
+            document.getElementById('braceletId').value = '';
+            document.getElementById('bookingId').value = '';
+            document.getElementById('passengerSearch').value = '';
+            document.getElementById('searchResults').style.display = 'none';
+            selectedBooking = null;
+        }
+
+        function closeResult() {
+            document.getElementById('resultArea').style.display = 'none';
+        }
+
+        function updateStatus(message, type = 'normal') {
+            const statusBar = document.getElementById('statusBar');
+            const scanZone = document.getElementById('scanZone');
+            
+            statusBar.textContent = message;
+            
+            if (type === 'scanning') {
+                scanZone.classList.add('scanning');
+            } else {
+                scanZone.classList.remove('scanning');
+            }
+        }
+
+        function playSound(type) {
+            // Create audio context for beep sounds
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            if (type === 'success') {
+                // Two short beeps for success
+                playBeep(audioContext, 800, 150);
+                setTimeout(() => playBeep(audioContext, 800, 150), 200);
+            } else {
+                // One long beep for error
+                playBeep(audioContext, 400, 500);
+            }
+        }
+
+        function playBeep(audioContext, frequency, duration) {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = frequency;
+            oscillator.type = 'sine';
+            
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration / 1000);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration / 1000);
+        }
+
+        // Update time display
+        function updateTime() {
+            const now = new Date();
+            const timeString = now.toLocaleTimeString();
+            document.getElementById('stationInfo').innerHTML = 
+                `Check-in Counter - General Santos International Airport<br>Current Time: ${timeString}`;
+        }
+
+        async function loadConnectedBracelets() {
+            try {
+                const response = await fetch(`${API_BASE}/bracelets/connected`);
+                const bracelets = await response.json();
+                
+                const braceletList = document.getElementById('braceletList');
+                braceletList.innerHTML = '';
+                
+                // Filter for connected AND available (Inactive status) bracelets
+                const availableBracelets = bracelets.filter(b => 
+                    b.connection_status === 'Connected' && b.status === 'Inactive'
+                );
+                
+                if (availableBracelets.length === 0) {
+                    braceletList.innerHTML = '<div class="bracelet-item">No available connected bracelets</div>';
+                } else {
+                    availableBracelets.forEach(bracelet => {
+                        const item = document.createElement('div');
+                        item.className = 'bracelet-item';
+                        item.innerHTML = `
+                            <span>${bracelet.bracelet_id}</span>
+                            <span class="status-connected">Connected & Available</span>
+                        `;
+                        item.onclick = () => selectBracelet(bracelet.bracelet_id);
+                        braceletList.appendChild(item);
+                    });
+                }
+                
+                braceletList.style.display = 'block';
+            } catch (error) {
+                console.error('Failed to load bracelets:', error);
+                updateStatus('Failed to load connected bracelets', 'error');
+            }
+        }
+
+        function selectBracelet(braceletId) {
+            document.getElementById('braceletId').value = braceletId;
+            document.getElementById('braceletList').style.display = 'none';
+            updateStatus(`Selected bracelet: ${braceletId}`, 'success');
+        }
+
+        // Auto-refresh connected bracelets every 10 seconds
+        setInterval(() => {
+            if (document.getElementById('braceletList').style.display === 'block') {
+                loadConnectedBracelets();
+            }
+        }, 10000);
+
+        // Update time every second
+        setInterval(updateTime, 1000);
+        updateTime();
+
+        console.log('AirLink Bracelet Assignment Scanner Ready');
+        console.log('Search for passengers and assign bracelets');
+    </script>
+</body>
+</html>

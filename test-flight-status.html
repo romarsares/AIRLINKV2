@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Status Management Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 900px; margin: 30px auto; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
+        .container { background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); }
+        h1 { color: #333; margin-bottom: 10px; font-size: 32px; }
+        .subtitle { color: #666; margin-bottom: 30px; font-size: 16px; }
+        .form-group { margin-bottom: 25px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; color: #555; font-size: 15px; }
+        input, select, textarea { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 15px; transition: border 0.3s; }
+        input:focus, select:focus, textarea:focus { outline: none; border-color: #4CAF50; }
+        .button-group { display: flex; gap: 10px; margin-top: 30px; flex-wrap: wrap; }
+        button { background: #4CAF50; color: white; padding: 14px 30px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; transition: all 0.3s; flex: 1; min-width: 200px; }
+        button:hover { background: #45a049; transform: translateY(-2px); box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4); }
+        .btn-danger { background: #f44336; }
+        .btn-danger:hover { background: #d32f2f; box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4); }
+        .btn-warning { background: #FF9800; }
+        .btn-warning:hover { background: #F57C00; box-shadow: 0 4px 12px rgba(255, 152, 0, 0.4); }
+        .result { margin-top: 30px; padding: 20px; border-radius: 10px; font-size: 15px; line-height: 1.8; }
+        .success { background: #d4edda; color: #155724; border: 2px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 2px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 2px solid #bee5eb; }
+        .status-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 13px; font-weight: bold; margin: 5px 0; }
+        .badge-departed { background: #f44336; color: white; }
+        .badge-boarding { background: #4CAF50; color: white; }
+        .badge-delayed { background: #FF9800; color: white; }
+        .badge-cancelled { background: #9E9E9E; color: white; }
+        .info-box { background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #2196F3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛫 Flight Status Management</h1>
+        <p class="subtitle">Test flight status updates and automatic passenger notifications</p>
+        
+        <div class="info-box">
+            <strong>📋 Instructions:</strong><br>
+            1. Enter flight number (e.g., PR123, 5J456)<br>
+            2. Select new status<br>
+            3. Click "Update Flight Status"<br>
+            4. Open bracelet simulator to see notifications<br>
+            <br>
+            <strong>⚠️ Important:</strong> When status = "Departed", all non-boarded passengers are automatically marked as "MISSED"
+        </div>
+        
+        <div class="form-group">
+            <label>Flight Number:</label>
+            <input type="text" id="flightNo" value="PR123" placeholder="Enter flight number (e.g., PR123)">
+        </div>
+        
+        <div class="form-group">
+            <label>New Status:</label>
+            <select id="status">
+                <option value="Scheduled">Scheduled</option>
+                <option value="Boarding">Boarding</option>
+                <option value="Departed">Departed</option>
+                <option value="Delayed">Delayed</option>
+                <option value="Cancelled">Cancelled</option>
+            </select>
+        </div>
+        
+        <div class="form-group" id="delayFields" style="display:none;">
+            <label>Delay Minutes:</label>
+            <input type="number" id="delayMinutes" placeholder="e.g., 30">
+            <label style="margin-top:10px;">New Departure Time:</label>
+            <input type="datetime-local" id="newDepartureTime">
+        </div>
+        
+        <div class="form-group" id="cancelFields" style="display:none;">
+            <label>Cancellation Reason:</label>
+            <textarea id="cancellationReason" rows="3" placeholder="e.g., Weather conditions"></textarea>
+        </div>
+        
+        <div class="button-group">
+            <button onclick="updateFlightStatus()">✈️ Update Flight Status</button>
+            <button class="btn-warning" onclick="autoDepartFlights()">⏰ Auto-Depart Past Flights</button>
+            <button class="btn-danger" onclick="clearResult()">🗑️ Clear</button>
+        </div>
+        
+        <div id="result"></div>
+    </div>
+    
+    <script>
+        const API_URL = 'http://localhost:3000/api';
+        
+        document.getElementById('status').addEventListener('change', function() {
+            const status = this.value;
+            document.getElementById('delayFields').style.display = status === 'Delayed' ? 'block' : 'none';
+            document.getElementById('cancelFields').style.display = status === 'Cancelled' ? 'block' : 'none';
+        });
+        
+        async function updateFlightStatus() {
+            const flightNo = document.getElementById('flightNo').value;
+            const status = document.getElementById('status').value;
+            const delayMinutes = document.getElementById('delayMinutes').value;
+            const newDepartureTime = document.getElementById('newDepartureTime').value;
+            const cancellationReason = document.getElementById('cancellationReason').value;
+            
+            if (!flightNo) {
+                showResult('Please enter a flight number', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/flights/by-number/${flightNo}/status`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        status,
+                        delay_minutes: delayMinutes || 0,
+                        new_departure_time: newDepartureTime || null,
+                        cancellation_reason: cancellationReason || null
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    let statusBadge = '';
+                    if (status === 'Departed') statusBadge = '<span class="status-badge badge-departed">DEPARTED</span>';
+                    else if (status === 'Boarding') statusBadge = '<span class="status-badge badge-boarding">BOARDING</span>';
+                    else if (status === 'Delayed') statusBadge = '<span class="status-badge badge-delayed">DELAYED</span>';
+                    else if (status === 'Cancelled') statusBadge = '<span class="status-badge badge-cancelled">CANCELLED</span>';
+                    
+                    let details = '';
+                    if (status === 'Departed') details = '<br><br><strong>⚠️ AUTOMATIC ACTION:</strong><br>✓ All non-boarded passengers marked as <strong>MISSED</strong><br>✓ Notifications sent to their bracelets';
+                    else if (status === 'Cancelled') details = '<br><br><strong>⚠️ AUTOMATIC ACTION:</strong><br>✓ All passengers marked as <strong>CANCELLED</strong><br>✓ Cancellation notifications sent';
+                    else if (status === 'Delayed') details = `<br><br><strong>⏰ DELAY INFO:</strong><br>✓ Delayed by ${delayMinutes} minutes<br>✓ Delay notifications sent to all passengers`;
+                    else if (status === 'Boarding') details = '<br><br><strong>📢 BOARDING CALL:</strong><br>✓ Boarding notifications sent to all confirmed passengers';
+                    
+                    showResult(`<strong>✅ Flight Status Updated Successfully!</strong><br><br>
+                    <strong>Flight:</strong> ${flightNo}<br>
+                    <strong>Old Status:</strong> ${data.old_status}<br>
+                    <strong>New Status:</strong> ${statusBadge}<br>
+                    <strong>Notifications Sent:</strong> ${data.notifications_sent} passengers
+                    ${details}<br><br>
+                    <strong>🔗 Next Step:</strong> Open bracelet simulator to see the notifications!`, 'success');
+                } else {
+                    showResult(`❌ Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Connection error: ${error.message}`, 'error');
+            }
+        }
+        
+        async function autoDepartFlights() {
+            try {
+                const response = await fetch(`${API_URL}/flights/auto-depart`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    showResult(`<strong>✅ Auto-Depart Completed!</strong><br><br>
+                    <strong>Flights Departed:</strong> ${data.flights_departed}<br>
+                    <strong>Passengers Marked as MISSED:</strong> ${data.passengers_missed}<br><br>
+                    ${data.passengers_missed > 0 ? '<strong>✓ Notifications sent to all missed passengers</strong><br><strong>🔗 Check bracelet simulators now!</strong>' : 'No missed passengers found.'}`, 'info');
+                } else {
+                    showResult(`❌ Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Connection error: ${error.message}`, 'error');
+            }
+        }
+        
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = `result ${type}`;
+            resultDiv.innerHTML = message.replace(/\n/g, '<br>');
+        }
+        
+        function clearResult() {
+            document.getElementById('result').innerHTML = '';
+        }
+    </script>
+</body>
+</html>

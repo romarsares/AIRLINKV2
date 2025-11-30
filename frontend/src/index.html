@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AirLink Dashboard</title>
     <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/security.css">
 </head>
 <body>
     <div class="app">
@@ -15,17 +16,33 @@
                     <h1>AirLink System</h1>
                     <p>Smart Bracelet Boarding Verification</p>
                 </div>
-                <form id="loginForm" class="login-form">
+                <form id="loginForm" class="login-form" novalidate>
                     <div class="form-group">
-                        <label for="role">Role</label>
-                        <select id="role" required>
-                            <option value="">Select Role</option>
-                            <option value="Admin">Admin</option>
-                            <option value="Operator">Operator</option>
-                        </select>
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" required 
+                               placeholder="Enter username" 
+                               maxlength="50" 
+                               pattern="[a-zA-Z0-9_-]+" 
+                               title="Username can only contain letters, numbers, underscore and dash"
+                               autocomplete="username"
+                               spellcheck="false">
+                        <div class="field-error" id="usernameError"></div>
                     </div>
-                    <button type="submit" class="btn-primary">Login</button>
-                    <div id="loginError" class="error-message"></div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" required 
+                               placeholder="Enter password" 
+                               minlength="6" 
+                               maxlength="100"
+                               autocomplete="current-password">
+                        <div class="field-error" id="passwordError"></div>
+                    </div>
+                    <div class="form-group" style="display: none;">
+                        <input type="hidden" id="role" name="role" value="">
+                        <div class="field-error" id="roleError"></div>
+                    </div>
+                    <button type="submit" class="btn-primary" id="loginBtn">Login</button>
+                    <div id="loginError" class="error-message" role="alert"></div>
                 </form>
             </div>
         </div>
@@ -45,7 +62,9 @@
 
             <nav class="nav">
                 <button class="nav-btn active" data-section="overview">Overview</button>
+                <button class="nav-btn" data-section="flights">Flights</button>
                 <button class="nav-btn" data-section="bookings">Bookings</button>
+                <button class="nav-btn" data-section="passengers">Passengers</button>
                 <button class="nav-btn" data-section="bracelets">Bracelets</button>
                 <button class="nav-btn" data-section="logs" id="logsTab">Sync Logs</button>
             </nav>
@@ -59,7 +78,7 @@
                             <div class="card-value" id="totalBookings">-</div>
                         </div>
                         <div class="card">
-                            <h3>Active Flights</h3>
+                            <h3>Today's Flights</h3>
                             <div class="card-value" id="activeFlights">-</div>
                         </div>
                         <div class="card">
@@ -67,7 +86,7 @@
                             <div class="card-value" id="activeBracelets">-</div>
                         </div>
                         <div class="card">
-                            <h3>Recent Syncs</h3>
+                            <h3>Connected Now</h3>
                             <div class="card-value" id="recentSyncs">-</div>
                         </div>
                     </div>
@@ -77,24 +96,172 @@
                     </div>
                 </section>
 
+                <!-- Flights Section -->
+                <section id="flights" class="section">
+                    <div class="section-header">
+                        <h2>Flight Schedule & Gates</h2>
+                        <button id="refreshFlights" class="btn-secondary">Refresh</button>
+                    </div>
+                    <div class="flights-table-container">
+                        <table class="flights-table">
+                            <thead>
+                                <tr>
+                                    <th>Flight No.</th>
+                                    <th>Destination</th>
+                                    <th>Departure</th>
+                                    <th>Gate</th>
+                                    <th>Status</th>
+                                    <th>Passengers</th>
+                                    <th>Boarded</th>
+                                </tr>
+                            </thead>
+                            <tbody id="flightsTableBody">
+                                <tr>
+                                    <td colspan="7" class="loading">Loading flights...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
                 <!-- Bookings Section -->
                 <section id="bookings" class="section">
                     <div class="section-header">
                         <h2>Flight Bookings</h2>
-                        <button id="createBookingBtn" class="btn-primary">Create Booking</button>
+                        <button id="refreshBookings" class="btn-secondary">Refresh</button>
                     </div>
                     <div class="search-bar">
-                        <input type="text" id="bookingSearch" placeholder="Search by Booking ID...">
+                        <input type="text" id="bookingSearch" placeholder="Search by Booking ID or Passenger Name...">
+                        <select id="statusFilter">
+                            <option value="all">All Status</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Confirmed">Confirmed</option>
+                            <option value="Boarded">Boarded</option>
+                        </select>
+                        <select id="braceletFilter">
+                            <option value="all">All Bracelets</option>
+                            <option value="assigned">Bracelet Assigned</option>
+                            <option value="unassigned">No Bracelet</option>
+                        </select>
                         <button id="searchBookingBtn" class="btn-secondary">Search</button>
                     </div>
-                    <div id="bookingResult" class="result-container"></div>
+                    <div class="bookings-table-container">
+                        <table class="bookings-table">
+                            <thead>
+                                <tr>
+                                    <th>Booking ID</th>
+                                    <th>Passenger</th>
+                                    <th>Flight</th>
+                                    <th>Destination</th>
+                                    <th>Seat</th>
+                                    <th>Status</th>
+                                    <th>Bracelet</th>
+                                    <th>Gate</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bookingsTableBody">
+                                <tr>
+                                    <td colspan="8" class="loading">Loading bookings...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Passengers Section -->
+                <section id="passengers" class="section">
+                    <div class="section-header">
+                        <h2>Passenger List</h2>
+                        <button id="refreshPassengers" class="btn-secondary">Refresh</button>
+                    </div>
+                    <div class="search-bar">
+                        <input type="text" id="passengerSearch" placeholder="Search by name, email, or flight...">
+                        <select id="passengerSort">
+                            <option value="name">Sort by Name</option>
+                            <option value="flight">Sort by Flight</option>
+                            <option value="status">Sort by Status</option>
+                            <option value="nationality">Sort by Nationality</option>
+                        </select>
+                        <button id="searchPassengerBtn" class="btn-secondary">Search</button>
+                    </div>
+                    <div class="passengers-table-container">
+                        <table class="passengers-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Contact</th>
+                                    <th>Nationality</th>
+                                    <th>Flight</th>
+                                    <th>Gate</th>
+                                    <th>Bracelet</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="passengersTableBody">
+                                <tr>
+                                    <td colspan="9" class="loading">Loading passengers...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </section>
 
                 <!-- Bracelets Section -->
                 <section id="bracelets" class="section">
                     <div class="section-header">
                         <h2>Bracelet Management</h2>
+                        <div class="real-time-status">
+                            <span class="status-indicator" id="realTimeStatus">🔴 Connecting...</span>
+                            <button id="refreshBracelets" class="btn-secondary">Manual Refresh</button>
+                        </div>
                     </div>
+                    
+                    <!-- Device Status Table -->
+                    <div class="device-status-section">
+                        <h3>Device Status Overview</h3>
+                        <div class="status-summary">
+                            <div class="status-card synced">
+                                <span class="status-count" id="syncedCount">0</span>
+                                <span class="status-label">Synced</span>
+                            </div>
+                            <div class="status-card unsynced">
+                                <span class="status-count" id="unsyncedCount">0</span>
+                                <span class="status-label">Unsynced</span>
+                            </div>
+                            <div class="status-card active">
+                                <span class="status-count" id="activeCount">0</span>
+                                <span class="status-label">Active</span>
+                            </div>
+                            <div class="status-card inactive">
+                                <span class="status-count" id="inactiveCount">0</span>
+                                <span class="status-label">Inactive</span>
+                            </div>
+                        </div>
+                        
+                        <div class="device-table-container">
+                            <table class="device-table" id="deviceTable">
+                                <thead>
+                                    <tr>
+                                        <th>Bracelet ID</th>
+                                        <th>Status</th>
+                                        <th>Battery</th>
+                                        <th>Last Sync</th>
+                                        <th>Connection</th>
+                                        <th>Passenger</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="deviceTableBody">
+                                    <tr>
+                                        <td colspan="7" class="loading">Loading device status...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
                     <div class="bracelet-actions">
                         <div class="action-group">
                             <h3>Assign Bracelet</h3>
@@ -120,7 +287,22 @@
                             </div>
                         </div>
                     </div>
-                    <div id="braceletResult" class="result-container"></div>
+                    
+                    <!-- Bracelet Activity Log -->
+                    <div class="activity-log-section">
+                        <h3>Bracelet Activity Log</h3>
+                        <div class="log-controls">
+                            <select id="activityFilter">
+                                <option value="all">All Activities</option>
+                                <option value="connections">Connections</option>
+                                <option value="assignments">Assignments</option>
+                                <option value="verifications">Verifications</option>
+                                <option value="errors">Errors</option>
+                            </select>
+                            <button id="clearLog" class="btn-secondary">Clear Log</button>
+                        </div>
+                        <div id="activityLog" class="activity-log"></div>
+                    </div>
                 </section>
 
                 <!-- Sync Logs Section -->

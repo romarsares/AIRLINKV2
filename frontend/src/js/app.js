@@ -39,26 +39,48 @@ class App {
         loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
-            const role = document.getElementById('role').value;
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
             
-            if (!role) {
-                this.showLoginError('Please select a role');
+            // Auto-set role based on username
+            let role = 'Operator'; // Default role
+            if (username.toLowerCase() === 'admin') {
+                role = 'Admin';
+            }
+            document.getElementById('role').value = role;
+            
+            const loginBtn = document.getElementById('loginBtn');
+            
+            // Clear previous errors
+            this.clearFieldErrors();
+            loginError.classList.remove('show');
+            
+            // Client-side validation
+            if (!this.validateLoginForm(username, password, role)) {
                 return;
             }
 
+            // Disable login button during request
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Logging in...';
+
             try {
-                // Attempt login
-                auth.login(role);
-                
-                // Test API connection
-                await api.health();
+                // Attempt login with MySQL validation
+                await auth.login(username, password, role);
                 
                 // Success - show dashboard
                 this.showDashboard();
                 loginError.classList.remove('show');
                 
+                // Reset form
+                loginForm.reset();
+                
             } catch (error) {
-                this.showLoginError('Login failed: ' + error.message);
+                this.showLoginError(error.message || 'Login failed. Please try again.');
+            } finally {
+                // Re-enable login button
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Login';
             }
         });
     }
@@ -75,10 +97,67 @@ class App {
         });
     }
 
-    // Show login error
+    // Validate login form fields
+    validateLoginForm(username, password, role) {
+        let isValid = true;
+        
+        if (!username || username.trim().length === 0) {
+            this.showFieldError('usernameError', 'Username is required');
+            isValid = false;
+        } else if (username.length > 50) {
+            this.showFieldError('usernameError', 'Username is too long');
+            isValid = false;
+        }
+        
+        if (!password || password.length < 6) {
+            this.showFieldError('passwordError', 'Password must be at least 6 characters');
+            isValid = false;
+        } else if (password.length > 100) {
+            this.showFieldError('passwordError', 'Password is too long');
+            isValid = false;
+        }
+        
+        // Role is auto-set, so just validate it exists
+        if (!role || !['Admin', 'Operator'].includes(role)) {
+            isValid = false;
+        }
+        
+        return isValid;
+    }
+    
+    // Show field-specific error
+    showFieldError(fieldId, message) {
+        const errorElement = document.getElementById(fieldId);
+        if (errorElement) {
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+        }
+    }
+    
+    // Clear all field errors
+    clearFieldErrors() {
+        const errorElements = document.querySelectorAll('.field-error');
+        errorElements.forEach(element => {
+            element.textContent = '';
+            element.style.display = 'none';
+        });
+    }
+
+    // Show login error with XSS protection
     showLoginError(message) {
         const loginError = document.getElementById('loginError');
-        loginError.textContent = message;
+        // Sanitize message to prevent XSS
+        const sanitizedMessage = message.replace(/[<>"'&]/g, function(match) {
+            const escapeMap = {
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#x27;',
+                '&': '&amp;'
+            };
+            return escapeMap[match];
+        });
+        loginError.textContent = sanitizedMessage;
         loginError.classList.add('show');
     }
 }

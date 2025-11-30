@@ -26,7 +26,7 @@ AirLink provides seamless communication between airports, airlines, and passenge
 
 1. Clone the repository
 ```bash
-git clone <repository-url>
+git clone https://github.com/romarsares/AIRLINKV2.git
 cd AIRLINKV2
 ```
 
@@ -93,6 +93,12 @@ The system provides 9 core API endpoints organized by priority:
 - HTTPS encryption
 - Role-based access control
 - Input validation and sanitization
+
+## Login Credentials
+
+### Default Test Accounts
+- **Admin**: `admin` / `admin12354`
+- **Operator**: `operator` / `operator123`
 
 ## Testing
 

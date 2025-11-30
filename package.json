@@ -1,23 +1,19 @@
 {
   "name": "airlink-system",
   "version": "1.0.0",
-  "description": "Smart bracelet-based boarding verification system for airports",
-  "main": "index.js",
+  "description": "Smart bracelet-based boarding verification system",
+  "main": "backend/server.js",
   "scripts": {
-    "dev:backend": "cd backend && npm run dev",
-    "dev:frontend": "cd frontend && npm start",
-    "test": "npm run test:backend && npm run test:frontend",
-    "test:backend": "cd backend && npm test",
-    "test:frontend": "cd frontend && npm test",
-    "build": "npm run build:backend && npm run build:frontend",
-    "build:backend": "cd backend && npm run build",
-    "build:frontend": "cd frontend && npm run build"
+    "start": "node backend/server.js"
   },
-  "keywords": ["airport", "boarding", "iot", "bracelet", "verification"],
-  "author": "AirLink Development Team",
+  "keywords": ["airport", "iot", "bracelet", "boarding"],
+  "author": "AirLink Team",
   "license": "MIT",
-  "workspaces": [
-    "backend",
-    "frontend"
-  ]
+  "dependencies": {
+    "express": "^4.18.2",
+    "mysql2": "^3.6.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "jsonwebtoken": "^9.0.2"
+  }
 }

@@ -1,7 +1,7 @@
 // API Module
 class API {
     constructor() {
-        this.baseURL = 'http://localhost:3002/api';
+        this.baseURL = 'http://localhost:3000/api';
     }
 
     // Generic API call method
@@ -51,6 +51,11 @@ class API {
             method: 'POST',
             body: JSON.stringify(bookingData)
         });
+    }
+
+    // Get all bookings
+    async getAllBookings() {
+        return this.call('/bookings');
     }
 
     // Get booking by ID
@@ -103,6 +108,21 @@ class API {
         return this.call('/sync/force', {
             method: 'POST'
         });
+    }
+
+    // Get all bracelets with status
+    async getAllBracelets() {
+        return this.call('/bracelets');
+    }
+
+    // Get all passengers
+    async getAllPassengers() {
+        return this.call('/passengers');
+    }
+
+    // Get all flights
+    async getAllFlights() {
+        return this.call('/flights');
     }
 }
 
