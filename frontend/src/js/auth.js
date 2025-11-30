@@ -207,6 +207,20 @@ class Auth {
         }
     }
 
+    // Check authentication and redirect to login if not authenticated
+    requireAuth() {
+        if (!this.isAuthenticated()) {
+            // Store current page to redirect back after login
+            const currentPage = window.location.pathname;
+            if (!currentPage.includes('login.html')) {
+                sessionStorage.setItem('airlink_redirect', currentPage);
+                window.location.href = 'login.html';
+            }
+            return false;
+        }
+        return true;
+    }
+
     // Get secure auth headers for API calls
     getAuthHeaders() {
         if (!this.isAuthenticated()) {
@@ -238,3 +252,14 @@ class Auth {
 
 // Export auth instance
 const auth = new Auth();
+
+// Auto-check authentication on page load (except login page)
+if (typeof window !== 'undefined') {
+    window.addEventListener('DOMContentLoaded', () => {
+        const currentPage = window.location.pathname;
+        // Skip auth check for login page
+        if (!currentPage.includes('login.html') && !currentPage.includes('index.html')) {
+            auth.requireAuth();
+        }
+    });
+}

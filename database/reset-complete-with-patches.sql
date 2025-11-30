@@ -1,12 +1,16 @@
--- Complete AirLink Database Reset Script
--- This will drop and recreate the entire database with fresh data
+-- Complete AirLink Database Reset Script with All Patches
+-- This will drop and recreate the entire database with fresh data and all patches applied
 
 -- Drop existing database
-DROP DATABASE IF EXISTS airlink_db;
+DROP DATABASE IF EXISTS airlink_dev;
 
 -- Create fresh database
-CREATE DATABASE airlink_db;
-USE airlink_db;
+CREATE DATABASE airlink_dev;
+USE airlink_dev;
+
+-- ========================================
+-- CORE SCHEMA (Base Tables)
+-- ========================================
 
 -- Create airports table
 CREATE TABLE airports (
@@ -31,7 +35,7 @@ CREATE TABLE passengers (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
--- Create flights table
+-- Create flights table (with Patch 0014 enhancements)
 CREATE TABLE flights (
     flight_id INT AUTO_INCREMENT PRIMARY KEY,
     flight_no VARCHAR(20) NOT NULL,
@@ -40,6 +44,9 @@ CREATE TABLE flights (
     departure_time DATETIME NOT NULL,
     gate_no VARCHAR(10),
     status VARCHAR(20) DEFAULT 'Scheduled',
+    delay_minutes INT DEFAULT 0,
+    new_departure_time DATETIME NULL,
+    cancellation_reason VARCHAR(255) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (origin_airport_id) REFERENCES airports(airport_id)
@@ -56,7 +63,7 @@ CREATE TABLE bracelets (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
--- Create bookings table
+-- Create bookings table (with Patch 0014 enhancements)
 CREATE TABLE bookings (
     booking_id INT AUTO_INCREMENT PRIMARY KEY,
     passenger_id INT NOT NULL,
@@ -95,7 +102,7 @@ CREATE TABLE sync_logs (
     FOREIGN KEY (server_id) REFERENCES servers(server_id)
 );
 
--- Create users table
+-- Create users table (Patch 0003)
 CREATE TABLE users (
     user_id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
@@ -103,6 +110,7 @@ CREATE TABLE users (
     role VARCHAR(20) NOT NULL,
     full_name VARCHAR(100),
     email VARCHAR(100),
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -130,14 +138,51 @@ CREATE TABLE gate_sessions (
     FOREIGN KEY (gate_no) REFERENCES gates(gate_no)
 );
 
--- Insert default airport
+-- ========================================
+-- PATCH 0013: NOTIFICATIONS SYSTEM
+-- ========================================
+
+-- Create notifications table
+CREATE TABLE notifications (
+    notification_id INT AUTO_INCREMENT PRIMARY KEY,
+    bracelet_id VARCHAR(50),
+    notification_type VARCHAR(50) NOT NULL,
+    message VARCHAR(255) NOT NULL,
+    priority VARCHAR(20) DEFAULT 'Normal',
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    delivered_at TIMESTAMP NULL,
+    FOREIGN KEY (bracelet_id) REFERENCES bracelets(bracelet_id)
+);
+
+-- ========================================
+-- PATCH 0014: FLIGHT STATUS MANAGEMENT
+-- ========================================
+
+-- Create flight status history table
+CREATE TABLE flight_status_history (
+    history_id INT AUTO_INCREMENT PRIMARY KEY,
+    flight_id INT NOT NULL,
+    old_status VARCHAR(20),
+    new_status VARCHAR(20) NOT NULL,
+    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    changed_by VARCHAR(50),
+    remarks VARCHAR(255),
+    FOREIGN KEY (flight_id) REFERENCES flights(flight_id)
+);
+
+-- ========================================
+-- DATA INSERTION
+-- ========================================
+
+-- Insert default airport (Patch 0001)
 INSERT INTO airports (airport_code, airport_name, city, country, timezone) VALUES
 ('GES', 'General Santos International Airport', 'General Santos', 'Philippines', 'Asia/Manila');
 
--- Insert default users
-INSERT INTO users (username, password_hash, role, full_name, email) VALUES
-('admin', SHA2('admin12354', 256), 'Admin', 'System Administrator', 'admin@airlink.com'),
-('operator', SHA2('operator123', 256), 'Operator', 'System Operator', 'operator@airlink.com');
+-- Insert default users (Patch 0003)
+INSERT INTO users (username, password_hash, role, full_name, email, is_active) VALUES
+('admin', SHA2('admin12354', 256), 'Admin', 'System Administrator', 'admin@airlink.com', TRUE),
+('operator', SHA2('operator123', 256), 'Operator', 'System Operator', 'operator@airlink.com', TRUE);
 
 -- Insert gates
 INSERT INTO gates (gate_no, airport_id, terminal) VALUES
@@ -162,30 +207,79 @@ INSERT INTO passengers (name, email, contact_no, nationality) VALUES
 ('Carlos Rodriguez', 'carlos007@email.com', '+34-612-345-678', 'Spanish'),
 ('Li Wei', 'liwei008@email.com', '+86-138-0013-8000', 'Chinese'),
 ('Ahmed Hassan', 'ahmed009@email.com', '+971-50-123-4567', 'Emirati'),
-('Sophie Martin', 'sophie010@email.com', '+33-6-12-34-56-78', 'French'),
-('Michael Brown', 'michael011@email.com', '+1-555-234-5678', 'American'),
-('Anna Garcia', 'anna012@email.com', '+34-612-456-789', 'Spanish'),
-('David Lee', 'david013@email.com', '+82-10-1234-5678', 'Korean'),
-('Lisa Anderson', 'lisa014@email.com', '+1-555-345-6789', 'American'),
-('Robert Taylor', 'robert015@email.com', '+44-20-8946-1234', 'British'),
-('Jennifer White', 'jennifer016@email.com', '+1-555-456-7890', 'American'),
-('James Martinez', 'james017@email.com', '+34-612-567-890', 'Spanish'),
-('Patricia Thomas', 'patricia018@email.com', '+1-555-567-8901', 'American'),
-('Christopher Jackson', 'chris019@email.com', '+1-555-678-9012', 'American'),
-('Linda Harris', 'linda020@email.com', '+44-20-7946-2345', 'British');
+('Sophie Martin', 'sophie010@email.com', '+33-6-12-34-56-78', 'French');
 
--- Insert sample flights
+-- Generate 190 more passengers (11-200)
+INSERT INTO passengers (name, email, contact_no, nationality)
+SELECT 
+    CONCAT('Passenger ', LPAD(n, 3, '0')) as name,
+    CONCAT('passenger', LPAD(n, 3, '0'), '@email.com') as email,
+    CONCAT('+', (60 + (n % 40)), '-', LPAD((900 + n), 3, '0'), '-', LPAD((n * 7 % 1000), 3, '0'), '-', LPAD((n * 13 % 10000), 4, '0')) as contact_no,
+    CASE (n % 10)
+        WHEN 0 THEN 'Filipino'
+        WHEN 1 THEN 'American'
+        WHEN 2 THEN 'Japanese'
+        WHEN 3 THEN 'British'
+        WHEN 4 THEN 'Spanish'
+        WHEN 5 THEN 'Chinese'
+        WHEN 6 THEN 'Korean'
+        WHEN 7 THEN 'Emirati'
+        WHEN 8 THEN 'French'
+        ELSE 'Australian'
+    END as nationality
+FROM (
+    SELECT 11 as n UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15 UNION ALL
+    SELECT 16 UNION ALL SELECT 17 UNION ALL SELECT 18 UNION ALL SELECT 19 UNION ALL SELECT 20 UNION ALL
+    SELECT 21 UNION ALL SELECT 22 UNION ALL SELECT 23 UNION ALL SELECT 24 UNION ALL SELECT 25 UNION ALL
+    SELECT 26 UNION ALL SELECT 27 UNION ALL SELECT 28 UNION ALL SELECT 29 UNION ALL SELECT 30 UNION ALL
+    SELECT 31 UNION ALL SELECT 32 UNION ALL SELECT 33 UNION ALL SELECT 34 UNION ALL SELECT 35 UNION ALL
+    SELECT 36 UNION ALL SELECT 37 UNION ALL SELECT 38 UNION ALL SELECT 39 UNION ALL SELECT 40 UNION ALL
+    SELECT 41 UNION ALL SELECT 42 UNION ALL SELECT 43 UNION ALL SELECT 44 UNION ALL SELECT 45 UNION ALL
+    SELECT 46 UNION ALL SELECT 47 UNION ALL SELECT 48 UNION ALL SELECT 49 UNION ALL SELECT 50 UNION ALL
+    SELECT 51 UNION ALL SELECT 52 UNION ALL SELECT 53 UNION ALL SELECT 54 UNION ALL SELECT 55 UNION ALL
+    SELECT 56 UNION ALL SELECT 57 UNION ALL SELECT 58 UNION ALL SELECT 59 UNION ALL SELECT 60 UNION ALL
+    SELECT 61 UNION ALL SELECT 62 UNION ALL SELECT 63 UNION ALL SELECT 64 UNION ALL SELECT 65 UNION ALL
+    SELECT 66 UNION ALL SELECT 67 UNION ALL SELECT 68 UNION ALL SELECT 69 UNION ALL SELECT 70 UNION ALL
+    SELECT 71 UNION ALL SELECT 72 UNION ALL SELECT 73 UNION ALL SELECT 74 UNION ALL SELECT 75 UNION ALL
+    SELECT 76 UNION ALL SELECT 77 UNION ALL SELECT 78 UNION ALL SELECT 79 UNION ALL SELECT 80 UNION ALL
+    SELECT 81 UNION ALL SELECT 82 UNION ALL SELECT 83 UNION ALL SELECT 84 UNION ALL SELECT 85 UNION ALL
+    SELECT 86 UNION ALL SELECT 87 UNION ALL SELECT 88 UNION ALL SELECT 89 UNION ALL SELECT 90 UNION ALL
+    SELECT 91 UNION ALL SELECT 92 UNION ALL SELECT 93 UNION ALL SELECT 94 UNION ALL SELECT 95 UNION ALL
+    SELECT 96 UNION ALL SELECT 97 UNION ALL SELECT 98 UNION ALL SELECT 99 UNION ALL SELECT 100 UNION ALL
+    SELECT 101 UNION ALL SELECT 102 UNION ALL SELECT 103 UNION ALL SELECT 104 UNION ALL SELECT 105 UNION ALL
+    SELECT 106 UNION ALL SELECT 107 UNION ALL SELECT 108 UNION ALL SELECT 109 UNION ALL SELECT 110 UNION ALL
+    SELECT 111 UNION ALL SELECT 112 UNION ALL SELECT 113 UNION ALL SELECT 114 UNION ALL SELECT 115 UNION ALL
+    SELECT 116 UNION ALL SELECT 117 UNION ALL SELECT 118 UNION ALL SELECT 119 UNION ALL SELECT 120 UNION ALL
+    SELECT 121 UNION ALL SELECT 122 UNION ALL SELECT 123 UNION ALL SELECT 124 UNION ALL SELECT 125 UNION ALL
+    SELECT 126 UNION ALL SELECT 127 UNION ALL SELECT 128 UNION ALL SELECT 129 UNION ALL SELECT 130 UNION ALL
+    SELECT 131 UNION ALL SELECT 132 UNION ALL SELECT 133 UNION ALL SELECT 134 UNION ALL SELECT 135 UNION ALL
+    SELECT 136 UNION ALL SELECT 137 UNION ALL SELECT 138 UNION ALL SELECT 139 UNION ALL SELECT 140 UNION ALL
+    SELECT 141 UNION ALL SELECT 142 UNION ALL SELECT 143 UNION ALL SELECT 144 UNION ALL SELECT 145 UNION ALL
+    SELECT 146 UNION ALL SELECT 147 UNION ALL SELECT 148 UNION ALL SELECT 149 UNION ALL SELECT 150 UNION ALL
+    SELECT 151 UNION ALL SELECT 152 UNION ALL SELECT 153 UNION ALL SELECT 154 UNION ALL SELECT 155 UNION ALL
+    SELECT 156 UNION ALL SELECT 157 UNION ALL SELECT 158 UNION ALL SELECT 159 UNION ALL SELECT 160 UNION ALL
+    SELECT 161 UNION ALL SELECT 162 UNION ALL SELECT 163 UNION ALL SELECT 164 UNION ALL SELECT 165 UNION ALL
+    SELECT 166 UNION ALL SELECT 167 UNION ALL SELECT 168 UNION ALL SELECT 169 UNION ALL SELECT 170 UNION ALL
+    SELECT 171 UNION ALL SELECT 172 UNION ALL SELECT 173 UNION ALL SELECT 174 UNION ALL SELECT 175 UNION ALL
+    SELECT 176 UNION ALL SELECT 177 UNION ALL SELECT 178 UNION ALL SELECT 179 UNION ALL SELECT 180 UNION ALL
+    SELECT 181 UNION ALL SELECT 182 UNION ALL SELECT 183 UNION ALL SELECT 184 UNION ALL SELECT 185 UNION ALL
+    SELECT 186 UNION ALL SELECT 187 UNION ALL SELECT 188 UNION ALL SELECT 189 UNION ALL SELECT 190 UNION ALL
+    SELECT 191 UNION ALL SELECT 192 UNION ALL SELECT 193 UNION ALL SELECT 194 UNION ALL SELECT 195 UNION ALL
+    SELECT 196 UNION ALL SELECT 197 UNION ALL SELECT 198 UNION ALL SELECT 199 UNION ALL SELECT 200
+) numbers;
+
+-- Insert 10 flights with updated departure times
 INSERT INTO flights (flight_no, origin_airport_id, destination, departure_time, gate_no, status) VALUES
-('PR123', 1, 'Manila (MNL)', '2024-12-20 08:30:00', 'A12', 'Scheduled'),
-('5J456', 1, 'Cebu (CEB)', '2024-12-20 10:15:00', 'A13', 'Scheduled'),
-('Z2789', 1, 'Davao (DVO)', '2024-12-20 12:45:00', 'B01', 'Scheduled'),
-('PR234', 1, 'Iloilo (ILO)', '2024-12-20 14:20:00', 'B02', 'Scheduled'),
-('5J567', 1, 'Bacolod (BCD)', '2024-12-20 16:30:00', 'G1', 'Scheduled'),
-('CX890', 1, 'Hong Kong (HKG)', '2024-12-20 18:45:00', 'G2', 'Scheduled'),
-('SQ123', 1, 'Singapore (SIN)', '2024-12-20 20:15:00', 'G3', 'Scheduled'),
-('NH456', 1, 'Tokyo (NRT)', '2024-12-21 02:30:00', 'A14', 'Scheduled'),
-('EK789', 1, 'Dubai (DXB)', '2024-12-21 06:45:00', 'B03', 'Scheduled'),
-('AF012', 1, 'Paris (CDG)', '2024-12-21 10:20:00', 'A12', 'Scheduled');
+('PR123', 1, 'Manila (MNL)', DATE_ADD(NOW(), INTERVAL 2 HOUR), 'A12', 'Scheduled'),
+('5J456', 1, 'Cebu (CEB)', DATE_ADD(NOW(), INTERVAL 4 HOUR), 'A13', 'Scheduled'),
+('Z2789', 1, 'Davao (DVO)', DATE_ADD(NOW(), INTERVAL 6 HOUR), 'B01', 'Scheduled'),
+('PR234', 1, 'Iloilo (ILO)', DATE_ADD(NOW(), INTERVAL 8 HOUR), 'B02', 'Scheduled'),
+('5J567', 1, 'Bacolod (BCD)', DATE_ADD(NOW(), INTERVAL 10 HOUR), 'G1', 'Scheduled'),
+('CX890', 1, 'Hong Kong (HKG)', DATE_ADD(NOW(), INTERVAL 12 HOUR), 'G2', 'Scheduled'),
+('SQ123', 1, 'Singapore (SIN)', DATE_ADD(NOW(), INTERVAL 14 HOUR), 'G3', 'Scheduled'),
+('NH456', 1, 'Tokyo (NRT)', DATE_ADD(NOW(), INTERVAL 16 HOUR), 'A14', 'Scheduled'),
+('EK789', 1, 'Dubai (DXB)', DATE_ADD(NOW(), INTERVAL 18 HOUR), 'B03', 'Scheduled'),
+('AF012', 1, 'Paris (CDG)', DATE_ADD(NOW(), INTERVAL 20 HOUR), 'A12', 'Scheduled');
 
 -- Insert 200 bracelets (GES001 to GES200)
 INSERT INTO bracelets (bracelet_id, rfid_tag, status, battery_level, last_sync_time)
@@ -236,65 +330,6 @@ FROM (
     SELECT 186 UNION ALL SELECT 187 UNION ALL SELECT 188 UNION ALL SELECT 189 UNION ALL SELECT 190 UNION ALL
     SELECT 191 UNION ALL SELECT 192 UNION ALL SELECT 193 UNION ALL SELECT 194 UNION ALL SELECT 195 UNION ALL
     SELECT 196 UNION ALL SELECT 197 UNION ALL SELECT 198 UNION ALL SELECT 199 UNION ALL SELECT 200
-) numbers;
-
--- Generate 180 more passengers (21-200)
-INSERT INTO passengers (name, email, contact_no, nationality)
-SELECT 
-    CONCAT('Passenger ', LPAD(n, 3, '0')) as name,
-    CONCAT('passenger', LPAD(n, 3, '0'), '@email.com') as email,
-    CONCAT('+', (60 + (n % 40)), '-', LPAD((900 + n), 3, '0'), '-', LPAD((n * 7 % 1000), 3, '0'), '-', LPAD((n * 13 % 10000), 4, '0')) as contact_no,
-    CASE (n % 10)
-        WHEN 0 THEN 'Filipino'
-        WHEN 1 THEN 'American'
-        WHEN 2 THEN 'Japanese'
-        WHEN 3 THEN 'British'
-        WHEN 4 THEN 'Spanish'
-        WHEN 5 THEN 'Chinese'
-        WHEN 6 THEN 'Korean'
-        WHEN 7 THEN 'Emirati'
-        WHEN 8 THEN 'French'
-        ELSE 'Australian'
-    END as nationality
-FROM (
-    SELECT n FROM (
-        SELECT 21 as n UNION ALL SELECT 22 UNION ALL SELECT 23 UNION ALL SELECT 24 UNION ALL SELECT 25 UNION ALL
-        SELECT 26 UNION ALL SELECT 27 UNION ALL SELECT 28 UNION ALL SELECT 29 UNION ALL SELECT 30 UNION ALL
-        SELECT 31 UNION ALL SELECT 32 UNION ALL SELECT 33 UNION ALL SELECT 34 UNION ALL SELECT 35 UNION ALL
-        SELECT 36 UNION ALL SELECT 37 UNION ALL SELECT 38 UNION ALL SELECT 39 UNION ALL SELECT 40 UNION ALL
-        SELECT 41 UNION ALL SELECT 42 UNION ALL SELECT 43 UNION ALL SELECT 44 UNION ALL SELECT 45 UNION ALL
-        SELECT 46 UNION ALL SELECT 47 UNION ALL SELECT 48 UNION ALL SELECT 49 UNION ALL SELECT 50 UNION ALL
-        SELECT 51 UNION ALL SELECT 52 UNION ALL SELECT 53 UNION ALL SELECT 54 UNION ALL SELECT 55 UNION ALL
-        SELECT 56 UNION ALL SELECT 57 UNION ALL SELECT 58 UNION ALL SELECT 59 UNION ALL SELECT 60 UNION ALL
-        SELECT 61 UNION ALL SELECT 62 UNION ALL SELECT 63 UNION ALL SELECT 64 UNION ALL SELECT 65 UNION ALL
-        SELECT 66 UNION ALL SELECT 67 UNION ALL SELECT 68 UNION ALL SELECT 69 UNION ALL SELECT 70 UNION ALL
-        SELECT 71 UNION ALL SELECT 72 UNION ALL SELECT 73 UNION ALL SELECT 74 UNION ALL SELECT 75 UNION ALL
-        SELECT 76 UNION ALL SELECT 77 UNION ALL SELECT 78 UNION ALL SELECT 79 UNION ALL SELECT 80 UNION ALL
-        SELECT 81 UNION ALL SELECT 82 UNION ALL SELECT 83 UNION ALL SELECT 84 UNION ALL SELECT 85 UNION ALL
-        SELECT 86 UNION ALL SELECT 87 UNION ALL SELECT 88 UNION ALL SELECT 89 UNION ALL SELECT 90 UNION ALL
-        SELECT 91 UNION ALL SELECT 92 UNION ALL SELECT 93 UNION ALL SELECT 94 UNION ALL SELECT 95 UNION ALL
-        SELECT 96 UNION ALL SELECT 97 UNION ALL SELECT 98 UNION ALL SELECT 99 UNION ALL SELECT 100 UNION ALL
-        SELECT 101 UNION ALL SELECT 102 UNION ALL SELECT 103 UNION ALL SELECT 104 UNION ALL SELECT 105 UNION ALL
-        SELECT 106 UNION ALL SELECT 107 UNION ALL SELECT 108 UNION ALL SELECT 109 UNION ALL SELECT 110 UNION ALL
-        SELECT 111 UNION ALL SELECT 112 UNION ALL SELECT 113 UNION ALL SELECT 114 UNION ALL SELECT 115 UNION ALL
-        SELECT 116 UNION ALL SELECT 117 UNION ALL SELECT 118 UNION ALL SELECT 119 UNION ALL SELECT 120 UNION ALL
-        SELECT 121 UNION ALL SELECT 122 UNION ALL SELECT 123 UNION ALL SELECT 124 UNION ALL SELECT 125 UNION ALL
-        SELECT 126 UNION ALL SELECT 127 UNION ALL SELECT 128 UNION ALL SELECT 129 UNION ALL SELECT 130 UNION ALL
-        SELECT 131 UNION ALL SELECT 132 UNION ALL SELECT 133 UNION ALL SELECT 134 UNION ALL SELECT 135 UNION ALL
-        SELECT 136 UNION ALL SELECT 137 UNION ALL SELECT 138 UNION ALL SELECT 139 UNION ALL SELECT 140 UNION ALL
-        SELECT 141 UNION ALL SELECT 142 UNION ALL SELECT 143 UNION ALL SELECT 144 UNION ALL SELECT 145 UNION ALL
-        SELECT 146 UNION ALL SELECT 147 UNION ALL SELECT 148 UNION ALL SELECT 149 UNION ALL SELECT 150 UNION ALL
-        SELECT 151 UNION ALL SELECT 152 UNION ALL SELECT 153 UNION ALL SELECT 154 UNION ALL SELECT 155 UNION ALL
-        SELECT 156 UNION ALL SELECT 157 UNION ALL SELECT 158 UNION ALL SELECT 159 UNION ALL SELECT 160 UNION ALL
-        SELECT 161 UNION ALL SELECT 162 UNION ALL SELECT 163 UNION ALL SELECT 164 UNION ALL SELECT 165 UNION ALL
-        SELECT 166 UNION ALL SELECT 167 UNION ALL SELECT 168 UNION ALL SELECT 169 UNION ALL SELECT 170 UNION ALL
-        SELECT 171 UNION ALL SELECT 172 UNION ALL SELECT 173 UNION ALL SELECT 174 UNION ALL SELECT 175 UNION ALL
-        SELECT 176 UNION ALL SELECT 177 UNION ALL SELECT 178 UNION ALL SELECT 179 UNION ALL SELECT 180 UNION ALL
-        SELECT 181 UNION ALL SELECT 182 UNION ALL SELECT 183 UNION ALL SELECT 184 UNION ALL SELECT 185 UNION ALL
-        SELECT 186 UNION ALL SELECT 187 UNION ALL SELECT 188 UNION ALL SELECT 189 UNION ALL SELECT 190 UNION ALL
-        SELECT 191 UNION ALL SELECT 192 UNION ALL SELECT 193 UNION ALL SELECT 194 UNION ALL SELECT 195 UNION ALL
-        SELECT 196 UNION ALL SELECT 197 UNION ALL SELECT 198 UNION ALL SELECT 199 UNION ALL SELECT 200
-    ) nums
 ) numbers;
 
 -- Insert 200 bookings distributed across 10 flights (20 passengers per flight)
@@ -355,16 +390,48 @@ FROM (
 INSERT INTO servers (airport_id, location, ip_address, sync_status) VALUES
 (1, 'General Santos International Airport - Main Server', '192.168.1.100', 'Active');
 
--- Create indexes for performance
+-- ========================================
+-- PERFORMANCE INDEXES
+-- ========================================
+
+-- Core indexes
 CREATE INDEX idx_bookings_passenger ON bookings(passenger_id);
 CREATE INDEX idx_bookings_flight ON bookings(flight_id);
+CREATE INDEX idx_bookings_bracelet ON bookings(assigned_bracelet);
 CREATE INDEX idx_flights_airport ON flights(origin_airport_id);
 CREATE INDEX idx_servers_airport ON servers(airport_id);
 CREATE INDEX idx_sync_logs_bracelet ON sync_logs(bracelet_id);
 CREATE INDEX idx_sync_logs_timestamp ON sync_logs(timestamp);
 
--- Display completion message
-SELECT 'AirLink Database Reset Complete!' as Status,
+-- Patch 0013 indexes
+CREATE INDEX idx_notifications_bracelet ON notifications(bracelet_id);
+CREATE INDEX idx_notifications_read ON notifications(is_read);
+CREATE INDEX idx_notifications_created ON notifications(created_at);
+
+-- Patch 0014 indexes
+CREATE INDEX idx_flight_status_history ON flight_status_history(flight_id, changed_at);
+
+-- ========================================
+-- COMPLETION STATUS
+-- ========================================
+
+SELECT 'AirLink Database Reset Complete with All Patches!' as Status,
+       'Patches Applied: 0001-0014' as Patches,
        COUNT(*) as Total_Tables 
 FROM information_schema.tables 
-WHERE table_schema = 'airlink_db';
+WHERE table_schema = 'airlink_dev';
+
+-- Show summary
+SELECT 'Summary' as Info, 'Count' as Value
+UNION ALL
+SELECT 'Passengers', COUNT(*) FROM passengers
+UNION ALL
+SELECT 'Flights', COUNT(*) FROM flights  
+UNION ALL
+SELECT 'Bracelets', COUNT(*) FROM bracelets
+UNION ALL
+SELECT 'Bookings', COUNT(*) FROM bookings
+UNION ALL
+SELECT 'Users', COUNT(*) FROM users
+UNION ALL
+SELECT 'Gates', COUNT(*) FROM gates;

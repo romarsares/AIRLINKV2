@@ -120,3 +120,42 @@ ex. 0001 - patch update no. 1 - "commit"
 - Track passenger assignments, status changes, and boarding events
 - Improved log readability and relevance
 - Enhanced real-time monitoring efficiency
+
+### Patch 0013 - 2024-12-20
+**Task**: Flight Notification System with Boarding Reminders
+**Changes**:
+- Added notifications table to database for flight alerts
+- Implemented notification API endpoints (send, read, fetch)
+- Enhanced heartbeat endpoint to include boarding reminders
+- Added automatic boarding alerts (30 min before departure)
+- Added boarding soon reminders (45 min before departure)
+- Created bracelet simulator v2 with notification display
+- Bracelet shows visual alerts with LED pulse and vibration simulation
+- Notifications include: Boarding Now, Boarding Soon, Gate Changes
+- Fixed sync logs endpoint to return proper JSON format
+- Real-time notification delivery through heartbeat sync
+
+### Patch 0014 - 2024-12-20
+**Task**: Flight Status Management & Missed Flight Detection
+**Changes**:
+- Added comprehensive flight status tracking (Scheduled, Boarding, Departed, Delayed, Cancelled)
+- Added passenger status tracking (Confirmed, Boarded, Missed, Cancelled)
+- Implemented PUT /api/flights/:id/status endpoint for flight status updates
+- Automatic passenger status updates based on flight status changes
+- Missed flight detection: automatically marks passengers as "Missed" when flight departs
+- Flight delay tracking with delay_minutes and new_departure_time fields
+- Cancellation reason tracking for cancelled flights
+- Automatic notifications sent to all affected passengers on status changes
+- POST /api/flights/check-missed endpoint for batch missed flight detection
+- Flight status history tracking for audit trail
+- Notifications sent for: Missed Flight, Flight Delayed, Flight Cancelled, Boarding Call
+- System automatically updates bracelet data when flight status changes
+
+### Patch 0015 - 2024-12-20
+**Task**: Add User Active Status Management
+**Changes**:
+- Added is_active column to users table for user management
+- Default value TRUE for all new users
+- Index added for efficient active user lookups
+- Enables user deactivation without deletion for audit trail
+- Updated user authentication to check active status

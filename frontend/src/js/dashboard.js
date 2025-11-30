@@ -11,6 +11,11 @@ class Dashboard {
 
     // Initialize dashboard
     init() {
+        // Check authentication first
+        if (!auth.requireAuth()) {
+            return; // Will redirect to login
+        }
+        
         this.setupNavigation();
         this.setupEventListeners();
         this.updateUserInfo();
@@ -139,10 +144,10 @@ class Dashboard {
     async loadOverview() {
         try {
             const data = await api.getOverview();
-            document.getElementById('totalBookings').textContent = data.total_bookings || 0;
-            document.getElementById('activeFlights').textContent = data.active_flights || 0;
-            document.getElementById('activeBracelets').textContent = data.active_bracelets || 0;
-            document.getElementById('recentSyncs').textContent = data.recent_syncs || 0;
+            document.getElementById('totalBookings').textContent = data.totalBookings || 0;
+            document.getElementById('activeFlights').textContent = data.todayFlights || 0;
+            document.getElementById('activeBracelets').textContent = data.activeBracelets || 0;
+            document.getElementById('recentSyncs').textContent = data.connectedBracelets || 0;
         } catch (error) {
             console.error('Overview load error:', error);
             this.showError('Failed to load overview: ' + error.message);
@@ -356,13 +361,16 @@ class Dashboard {
         currentBracelets.forEach(bracelet => {
             const braceletId = bracelet.bracelet_id;
             const previousState = this.previousBraceletStates.get(braceletId);
+            const isConnected = bracelet.connection_status === 'Connected';
             
             if (!previousState) {
-                // First time seeing this bracelet
-                this.addBraceletLog(braceletId, 'Connected', `Bracelet ${braceletId} detected in system`);
-                
-                if (bracelet.passenger_name) {
-                    this.addBraceletLog(braceletId, 'Assigned', `Assigned to ${bracelet.passenger_name}`);
+                // First time seeing this bracelet - only log if actually connected
+                if (isConnected) {
+                    this.addBraceletLog(braceletId, 'Connected', `Bracelet ${braceletId} connected to server`);
+                    
+                    if (bracelet.passenger_name) {
+                        this.addBraceletLog(braceletId, 'Assigned', `Assigned to ${bracelet.passenger_name}`);
+                    }
                 }
             } else {
                 // Check for status changes
@@ -621,7 +629,7 @@ class Dashboard {
         const braceletId = document.getElementById('assignBraceletId').value.trim();
         
         if (!bookingId || !braceletId) {
-            this.showBraceletResult('Please fill in both Booking ID and Bracelet ID', true);
+            this.showError('Please fill in both Booking ID and Bracelet ID');
             return;
         }
 
@@ -630,14 +638,14 @@ class Dashboard {
             const booking = await api.getBooking(bookingId);
             const result = await api.assignBracelet(parseInt(bookingId), braceletId);
             
-            this.showBraceletResult(`Success: ${result.message}`, false);
-            this.addBraceletLog(braceletId, 'Assignment', `Manually assigned to ${booking.name} (${booking.flight_no})`);
+            this.showError(`✅ ${result.message}`, false);
+            this.addBraceletLog(braceletId, 'Assignment', `Manually assigned to ${booking.passenger_name} (${booking.flight_no})`);
             this.clearBraceletInputs();
             
             // Refresh after a short delay to catch the assignment
             setTimeout(() => this.loadDeviceStatus(), 1000);
         } catch (error) {
-            this.showBraceletResult(`Error: ${error.message}`, true);
+            this.showError(`❌ ${error.message}`);
             this.addBraceletLog(braceletId, 'Assignment Failed', error.message);
         }
     }
@@ -648,7 +656,7 @@ class Dashboard {
         const gateNo = document.getElementById('verifyGateNo').value.trim();
         
         if (!braceletId || !gateNo) {
-            this.showBraceletResult('Please fill in both Bracelet ID and Gate Number', true);
+            this.showError('Please fill in both Bracelet ID and Gate Number');
             return;
         }
 
@@ -657,10 +665,10 @@ class Dashboard {
             
             const result = await api.verifyBracelet(braceletId, gateNo);
             if (result.verified) {
-                this.showBraceletResult(`✅ Boarding Cleared - ${result.flight_no}`, false);
+                this.showError(`✅ Boarding Cleared - ${result.flight_no}`, false);
                 this.addBraceletLog(braceletId, 'Boarding Cleared', `✅ Approved for boarding ${result.flight_no} at Gate ${gateNo}`);
             } else {
-                this.showBraceletResult(`❌ Boarding Denied - ${result.message}`, true);
+                this.showError(`❌ Boarding Denied - ${result.message}`);
                 this.addBraceletLog(braceletId, 'Boarding Denied', `❌ ${result.message} at Gate ${gateNo}`);
             }
             this.clearBraceletInputs();
@@ -668,7 +676,7 @@ class Dashboard {
             // Refresh after a short delay
             setTimeout(() => this.loadDeviceStatus(), 1000);
         } catch (error) {
-            this.showBraceletResult(`Error: ${error.message}`, true);
+            this.showError(`❌ ${error.message}`);
             this.addBraceletLog(braceletId, 'Verification Error', error.message);
         }
     }
@@ -678,23 +686,17 @@ class Dashboard {
         const braceletId = document.getElementById('statusBraceletId').value.trim();
         
         if (!braceletId) {
-            this.showBraceletResult('Please enter Bracelet ID', true);
+            this.showError('Please enter Bracelet ID');
             return;
         }
 
         try {
-            const status = await api.getBraceletStatus(braceletId);
-            this.showBraceletResult(`Status: ${status.status} | Battery: ${status.battery_level}% | Last Sync: ${status.last_sync_time || 'Never'}`, false);
+            const result = await api.getBraceletStatus(braceletId);
+            const status = result.data;
+            this.showError(`Status: ${status.status} | Battery: ${status.battery_level}% | Last Sync: ${status.last_sync_time || 'Never'}`, false);
         } catch (error) {
-            this.showBraceletResult(`Error: ${error.message}`, true);
+            this.showError(`❌ ${error.message}`);
         }
-    }
-
-    // Show bracelet operation result
-    showBraceletResult(message, isError) {
-        const container = document.getElementById('braceletResult');
-        const className = isError ? 'result-error' : 'result-success';
-        container.innerHTML = `<div class="result-item ${className}">${message}</div>`;
     }
 
     // Clear bracelet inputs

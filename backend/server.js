@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const jwt = require('jsonwebtoken');
+const path = require('path');
 require('dotenv').config();
 
 const authRoutes = require('./auth');
@@ -14,6 +15,15 @@ const PORT = process.env.PORT || 3000;
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
+
+// Serve static files
+app.use('/frontend', express.static(path.join(__dirname, '../frontend')));
+app.use('/bracelet', express.static(path.join(__dirname, '../bracelet')));
+
+// Root redirect
+app.get('/', (req, res) => {
+  res.redirect('/frontend/src/index.html');
+});
 
 // Auth middleware
 const authenticateToken = (req, res, next) => {
@@ -197,18 +207,18 @@ app.post('/api/bracelets/assign', async (req, res) => {
 // Verify bracelet
 app.post('/api/bracelets/verify', async (req, res) => {
   try {
-    const { bracelet_id, gate_no } = req.body;
+    const { bracelet_id, gate_no, collect_bracelet } = req.body;
     
     // Get booking info
     const [booking] = await db.execute(`
-      SELECT b.*, f.gate_no as flight_gate, f.flight_no
+      SELECT b.*, f.gate_no as flight_gate, f.flight_no, p.name as passenger_name
       FROM bookings b
       JOIN flights f ON b.flight_id = f.flight_id
+      JOIN passengers p ON b.passenger_id = p.passenger_id
       WHERE b.assigned_bracelet = ? AND b.booking_status = 'Confirmed'
     `, [bracelet_id]);
     
     if (booking.length === 0) {
-      // Log failed verification
       await db.execute(
         'INSERT INTO sync_logs (bracelet_id, timestamp, sync_status, remarks) VALUES (?, NOW(), ?, ?)',
         [bracelet_id, 'Failed', 'Bracelet not found or not confirmed']
@@ -222,7 +232,6 @@ app.post('/api/bracelets/verify', async (req, res) => {
     
     const bookingData = booking[0];
     
-    // Verify gate matches (enhanced error handling)
     if (bookingData.flight_gate && gate_no !== bookingData.flight_gate) {
       await db.execute(
         'INSERT INTO sync_logs (bracelet_id, timestamp, sync_status, remarks) VALUES (?, NOW(), ?, ?)',
@@ -237,24 +246,40 @@ app.post('/api/bracelets/verify', async (req, res) => {
       });
     }
     
-    // Update booking status
     await db.execute(
       'UPDATE bookings SET booking_status = "Boarded" WHERE booking_id = ?',
       [bookingData.booking_id]
     );
     
-    // Log successful verification
     await db.execute(
       'INSERT INTO sync_logs (bracelet_id, timestamp, sync_status, remarks) VALUES (?, NOW(), ?, ?)',
       [bracelet_id, 'Success', `Boarding verified at gate ${gate_no}`]
     );
     
+    if (collect_bracelet) {
+      await db.execute(
+        'UPDATE bookings SET assigned_bracelet = NULL WHERE booking_id = ?',
+        [bookingData.booking_id]
+      );
+      
+      await db.execute(
+        'UPDATE bracelets SET status = "Inactive" WHERE bracelet_id = ?',
+        [bracelet_id]
+      );
+      
+      await db.execute(
+        'INSERT INTO sync_logs (bracelet_id, timestamp, sync_status, remarks) VALUES (?, NOW(), ?, ?)',
+        [bracelet_id, 'Success', 'Bracelet collected after boarding']
+      );
+    }
+    
     res.json({ 
       verified: true, 
-      message: 'Boarding Approved',
+      message: collect_bracelet ? 'Boarding Approved - Bracelet Collected' : 'Boarding Approved',
       flight_no: bookingData.flight_no,
-      passenger_name: bookingData.passenger_name || 'Unknown',
-      gate_no: gate_no
+      passenger_name: bookingData.passenger_name,
+      gate_no: gate_no,
+      bracelet_collected: collect_bracelet || false
     });
   } catch (error) {
     console.error('Verify bracelet error:', error);
@@ -262,11 +287,12 @@ app.post('/api/bracelets/verify', async (req, res) => {
   }
 });
 
-// Get bracelet status
+// Get bracelet status with flight info
 app.get('/api/bracelets/:id/status', async (req, res) => {
   try {
     const [bracelet] = await db.execute(`
-      SELECT br.*, b.booking_status, p.name as passenger_name, f.flight_no, f.gate_no, f.departure_time, f.destination, b.seat_no
+      SELECT br.*, b.booking_status, p.name as passenger_name, f.flight_no, f.gate_no, f.departure_time, f.destination, f.status as flight_status, b.seat_no,
+             TIMESTAMPDIFF(MINUTE, NOW(), f.departure_time) as minutes_until_departure
       FROM bracelets br
       LEFT JOIN bookings b ON br.bracelet_id = b.assigned_bracelet
       LEFT JOIN passengers p ON b.passenger_id = p.passenger_id
@@ -332,7 +358,9 @@ app.get('/api/flights', async (req, res) => {
     const [flights] = await db.execute(`
       SELECT f.*,
              COUNT(b.booking_id) as total_passengers,
-             COUNT(CASE WHEN b.booking_status = 'Boarded' THEN 1 END) as boarded_count
+             COUNT(CASE WHEN b.booking_status = 'Boarded' THEN 1 END) as boarded_count,
+             COUNT(CASE WHEN b.booking_status = 'Missed' THEN 1 END) as missed_count,
+             COUNT(CASE WHEN b.booking_status = 'Cancelled' THEN 1 END) as cancelled_count
       FROM flights f
       LEFT JOIN bookings b ON f.flight_id = b.flight_id
       GROUP BY f.flight_id
@@ -362,10 +390,50 @@ app.get('/api/admin/sync_logs', async (req, res) => {
       SELECT * FROM sync_logs ${whereClause} ORDER BY timestamp DESC LIMIT 100
     `);
     
-    res.json(logs);
+    res.json({ logs });
   } catch (error) {
     console.error('Sync logs error:', error);
     res.status(500).json({ error: 'Failed to fetch sync logs' });
+  }
+});
+
+// Collect bracelet (unassign and deactivate after boarding)
+app.post('/api/bracelets/:id/collect', async (req, res) => {
+  try {
+    const braceletId = req.params.id;
+    
+    const [booking] = await db.execute(
+      'SELECT booking_id, booking_status FROM bookings WHERE assigned_bracelet = ?',
+      [braceletId]
+    );
+    
+    if (booking.length === 0) {
+      return res.status(400).json({ error: 'Bracelet not assigned to any passenger' });
+    }
+    
+    if (booking[0].booking_status !== 'Boarded') {
+      return res.status(400).json({ error: 'Passenger has not boarded yet' });
+    }
+    
+    await db.execute(
+      'UPDATE bookings SET assigned_bracelet = NULL WHERE booking_id = ?',
+      [booking[0].booking_id]
+    );
+    
+    await db.execute(
+      'UPDATE bracelets SET status = "Inactive" WHERE bracelet_id = ?',
+      [braceletId]
+    );
+    
+    await db.execute(
+      'INSERT INTO sync_logs (bracelet_id, timestamp, sync_status, remarks) VALUES (?, NOW(), ?, ?)',
+      [braceletId, 'Success', 'Bracelet collected after boarding']
+    );
+    
+    res.json({ message: 'Bracelet collected and ready for reuse' });
+  } catch (error) {
+    console.error('Collect bracelet error:', error);
+    res.status(500).json({ error: 'Failed to collect bracelet' });
   }
 });
 
@@ -428,14 +496,50 @@ app.post('/api/sync/force', async (req, res) => {
   }
 });
 
-// Bracelet heartbeat
+// Bracelet heartbeat with notification check
 app.post('/api/bracelets/:id/heartbeat', async (req, res) => {
   try {
     await db.execute(
       'UPDATE bracelets SET last_sync_time = NOW() WHERE bracelet_id = ?',
       [req.params.id]
     );
-    res.json({ message: 'Heartbeat received' });
+    
+    // Check for pending notifications
+    const [notifications] = await db.execute(
+      'SELECT * FROM notifications WHERE bracelet_id = ? AND is_read = FALSE ORDER BY created_at DESC LIMIT 5',
+      [req.params.id]
+    );
+    
+    // Check for boarding reminders
+    const [flightInfo] = await db.execute(`
+      SELECT f.flight_no, f.gate_no, f.departure_time, f.status,
+             TIMESTAMPDIFF(MINUTE, NOW(), f.departure_time) as minutes_until_departure
+      FROM bookings b
+      JOIN flights f ON b.flight_id = f.flight_id
+      WHERE b.assigned_bracelet = ? AND b.booking_status = 'Confirmed'
+    `, [req.params.id]);
+    
+    let boardingReminder = null;
+    if (flightInfo.length > 0) {
+      const flight = flightInfo[0];
+      const minutesUntil = flight.minutes_until_departure;
+      
+      if (minutesUntil <= 15 && minutesUntil > 0) {
+        boardingReminder = {
+          type: 'BOARDING_REMINDER',
+          message: `Proceed to Gate ${flight.gate_no} - Departure in ${minutesUntil} min`,
+          flight_no: flight.flight_no,
+          gate_no: flight.gate_no,
+          minutes_until: minutesUntil
+        };
+      }
+    }
+    
+    res.json({ 
+      message: 'Heartbeat received',
+      notifications: notifications,
+      boarding_reminder: boardingReminder
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update heartbeat' });
   }
@@ -493,6 +597,157 @@ app.get('/api/gates', async (req, res) => {
   } catch (error) {
     console.error('Get gates error:', error);
     res.status(500).json({ error: 'Failed to fetch gates' });
+  }
+});
+
+// Get notifications for bracelet
+app.get('/api/bracelets/:id/notifications', async (req, res) => {
+  try {
+    const [notifications] = await db.execute(
+      'SELECT * FROM notifications WHERE bracelet_id = ? AND is_read = FALSE ORDER BY created_at DESC LIMIT 10',
+      [req.params.id]
+    );
+    res.json(notifications);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch notifications' });
+  }
+});
+
+// Mark notification as read
+app.put('/api/notifications/:id/read', async (req, res) => {
+  try {
+    await db.execute(
+      'UPDATE notifications SET is_read = TRUE, delivered_at = NOW() WHERE notification_id = ?',
+      [req.params.id]
+    );
+    res.json({ message: 'Notification marked as read' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update notification' });
+  }
+});
+
+// Send notification to bracelet
+app.post('/api/notifications/send', async (req, res) => {
+  try {
+    const { bracelet_id, notification_type, message, priority } = req.body;
+    
+    const [result] = await db.execute(
+      'INSERT INTO notifications (bracelet_id, notification_type, message, priority) VALUES (?, ?, ?, ?)',
+      [bracelet_id, notification_type, message, priority || 'Normal']
+    );
+    
+    res.json({ 
+      message: 'Notification sent',
+      notification_id: result.insertId
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to send notification' });
+  }
+});
+
+// Update flight status by flight number
+app.put('/api/flights/by-number/:flight_no/status', async (req, res) => {
+  try {
+    const { status, delay_minutes, new_departure_time, cancellation_reason } = req.body;
+    const flightNo = req.params.flight_no;
+    
+    const [flight] = await db.execute('SELECT * FROM flights WHERE flight_no = ?', [flightNo]);
+    if (flight.length === 0) return res.status(404).json({ error: 'Flight not found' });
+    
+    const flightId = flight[0].flight_id;
+    const oldStatus = flight[0].status;
+    await db.execute('UPDATE flights SET status = ?, delay_minutes = ?, new_departure_time = ?, cancellation_reason = ? WHERE flight_id = ?',
+      [status, delay_minutes || 0, new_departure_time || null, cancellation_reason || null, flightId]);
+    
+    const [passengers] = await db.execute(`SELECT b.booking_id, b.assigned_bracelet, p.name as passenger_name, b.booking_status
+      FROM bookings b JOIN passengers p ON b.passenger_id = p.passenger_id
+      WHERE b.flight_id = ? AND b.assigned_bracelet IS NOT NULL`, [flightId]);
+    
+    let notificationMessage = '', notificationType = '', priority = 'Normal';
+    
+    if (status === 'Departed') {
+      for (const passenger of passengers) {
+        if (passenger.booking_status === 'Confirmed') {
+          await db.execute('UPDATE bookings SET booking_status = "Missed" WHERE booking_id = ?', [passenger.booking_id]);
+          notificationMessage = `Flight ${flight[0].flight_no} has departed. You missed your flight.`;
+          notificationType = 'MISSED_FLIGHT';
+          priority = 'High';
+          await db.execute('INSERT INTO notifications (bracelet_id, notification_type, message, priority) VALUES (?, ?, ?, ?)',
+            [passenger.assigned_bracelet, notificationType, notificationMessage, priority]);
+        }
+      }
+    } else if (status === 'Delayed') {
+      notificationMessage = `Flight ${flight[0].flight_no} delayed by ${delay_minutes} minutes. New time: ${new_departure_time}`;
+      notificationType = 'FLIGHT_DELAYED';
+      priority = 'High';
+      for (const passenger of passengers) {
+        await db.execute('INSERT INTO notifications (bracelet_id, notification_type, message, priority) VALUES (?, ?, ?, ?)',
+          [passenger.assigned_bracelet, notificationType, notificationMessage, priority]);
+      }
+    } else if (status === 'Cancelled') {
+      notificationMessage = `Flight ${flight[0].flight_no} has been cancelled. ${cancellation_reason || 'Please contact airline.'}`;
+      notificationType = 'FLIGHT_CANCELLED';
+      priority = 'High';
+      for (const passenger of passengers) {
+        await db.execute('UPDATE bookings SET booking_status = "Cancelled" WHERE booking_id = ?', [passenger.booking_id]);
+        await db.execute('INSERT INTO notifications (bracelet_id, notification_type, message, priority) VALUES (?, ?, ?, ?)',
+          [passenger.assigned_bracelet, notificationType, notificationMessage, priority]);
+      }
+    } else if (status === 'Boarding') {
+      notificationMessage = `Boarding now for Flight ${flight[0].flight_no} at Gate ${flight[0].gate_no}`;
+      notificationType = 'BOARDING_CALL';
+      priority = 'High';
+      for (const passenger of passengers) {
+        if (passenger.booking_status === 'Confirmed') {
+          await db.execute('INSERT INTO notifications (bracelet_id, notification_type, message, priority) VALUES (?, ?, ?, ?)',
+            [passenger.assigned_bracelet, notificationType, notificationMessage, priority]);
+        }
+      }
+    }
+    
+    res.json({ message: 'Flight status updated', old_status: oldStatus, new_status: status, notifications_sent: passengers.length });
+  } catch (error) {
+    console.error('Update flight status error:', error);
+    res.status(500).json({ error: 'Failed to update flight status' });
+  }
+});
+
+// Check and mark missed flights
+app.post('/api/flights/check-missed', async (req, res) => {
+  try {
+    const [missedPassengers] = await db.execute(`SELECT b.booking_id, b.assigned_bracelet, p.name as passenger_name, f.flight_no
+      FROM bookings b JOIN passengers p ON b.passenger_id = p.passenger_id JOIN flights f ON b.flight_id = f.flight_id
+      WHERE f.status = 'Departed' AND b.booking_status = 'Confirmed' AND b.assigned_bracelet IS NOT NULL`);
+    
+    for (const passenger of missedPassengers) {
+      await db.execute('UPDATE bookings SET booking_status = "Missed" WHERE booking_id = ?', [passenger.booking_id]);
+      await db.execute('INSERT INTO notifications (bracelet_id, notification_type, message, priority) VALUES (?, ?, ?, ?)',
+        [passenger.assigned_bracelet, 'MISSED_FLIGHT', `You missed flight ${passenger.flight_no}. Please contact airline.`, 'High']);
+    }
+    
+    res.json({ message: 'Missed flights checked', passengers_marked: missedPassengers.length });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to check missed flights' });
+  }
+});
+
+// Auto-depart flights that passed departure time
+app.post('/api/flights/auto-depart', async (req, res) => {
+  try {
+    const [pastFlights] = await db.execute(`SELECT flight_id, flight_no FROM flights WHERE departure_time < NOW() AND status IN ('Scheduled', 'Boarding')`);
+    let totalMissed = 0;
+    for (const flight of pastFlights) {
+      await db.execute('UPDATE flights SET status = "Departed" WHERE flight_id = ?', [flight.flight_id]);
+      const [passengers] = await db.execute(`SELECT b.booking_id, b.assigned_bracelet FROM bookings b WHERE b.flight_id = ? AND b.booking_status = 'Confirmed' AND b.assigned_bracelet IS NOT NULL`, [flight.flight_id]);
+      for (const passenger of passengers) {
+        await db.execute('UPDATE bookings SET booking_status = "Missed" WHERE booking_id = ?', [passenger.booking_id]);
+        await db.execute('INSERT INTO notifications (bracelet_id, notification_type, message, priority) VALUES (?, ?, ?, ?)', [passenger.assigned_bracelet, 'MISSED_FLIGHT', `Flight ${flight.flight_no} has departed. You missed your flight.`, 'High']);
+        totalMissed++;
+      }
+    }
+    res.json({ message: 'Auto-depart completed', flights_departed: pastFlights.length, passengers_missed: totalMissed });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to auto-depart flights' });
   }
 });
 
@@ -554,9 +809,10 @@ app.use((error, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`AirLink Backend Server running on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/api/health`);
+  console.log(`Local: http://localhost:${PORT}/api/health`);
+  console.log(`Network: http://<YOUR_IP>:${PORT}/api/health`);
 });
 
 module.exports = app;

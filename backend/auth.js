@@ -14,12 +14,12 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Username and password required' });
     }
 
-    // Query user from database
+    // Query user from database (check if user exists and is active)
     const query = 'SELECT * FROM users WHERE username = ? AND is_active = TRUE';
     const [users] = await db.execute(query, [username]);
 
     if (users.length === 0) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: 'Invalid credentials or account disabled' });
     }
 
     const user = users[0];

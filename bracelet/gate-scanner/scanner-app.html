@@ -382,7 +382,7 @@
 
                 const statusData = await statusResponse.json();
                 
-                // Then perform verification
+                // Then perform verification with bracelet collection
                 const verifyResponse = await fetch(`${API_BASE}/bracelets/verify`, {
                     method: 'POST',
                     headers: {
@@ -391,6 +391,7 @@
                     body: JSON.stringify({
                         bracelet_id: braceletId,
                         gate_no: currentGate || 'UNKNOWN',
+                        collect_bracelet: true,
                         timestamp: new Date().toISOString()
                     })
                 });
@@ -398,7 +399,10 @@
                 const verifyData = await verifyResponse.json();
                 
                 if (verifyResponse.ok && verifyData.verified) {
-                    showResult(true, statusData.data, verifyData.message || 'Boarding Approved');
+                    const message = verifyData.bracelet_collected ? 
+                        'Boarding Approved - Bracelet Collected' : 
+                        'Boarding Approved';
+                    showResult(true, statusData.data, message);
                 } else {
                     // Enhanced error messages
                     let errorMsg = verifyData.message || 'Verification failed';
