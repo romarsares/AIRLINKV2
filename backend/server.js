@@ -12,7 +12,21 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"]
+    }
+  }
+}));
 app.use(cors());
 app.use(express.json());
 
@@ -440,6 +454,13 @@ app.post('/api/bracelets/:id/collect', async (req, res) => {
 // Deactivate bracelet
 app.post('/api/bracelets/:id/deactivate', async (req, res) => {
   try {
+    // Clear bracelet assignment from bookings
+    await db.execute(
+      'UPDATE bookings SET assigned_bracelet = NULL WHERE assigned_bracelet = ?',
+      [req.params.id]
+    );
+    
+    // Set bracelet status to Inactive
     await db.execute(
       'UPDATE bracelets SET status = "Inactive" WHERE bracelet_id = ?',
       [req.params.id]
@@ -645,71 +666,50 @@ app.post('/api/notifications/send', async (req, res) => {
   }
 });
 
-// Update flight status by flight number
-app.put('/api/flights/by-number/:flight_no/status', async (req, res) => {
-  try {
-    const { status, delay_minutes, new_departure_time, cancellation_reason } = req.body;
-    const flightNo = req.params.flight_no;
-    
-    const [flight] = await db.execute('SELECT * FROM flights WHERE flight_no = ?', [flightNo]);
-    if (flight.length === 0) return res.status(404).json({ error: 'Flight not found' });
-    
-    const flightId = flight[0].flight_id;
-    const oldStatus = flight[0].status;
-    await db.execute('UPDATE flights SET status = ?, delay_minutes = ?, new_departure_time = ?, cancellation_reason = ? WHERE flight_id = ?',
-      [status, delay_minutes || 0, new_departure_time || null, cancellation_reason || null, flightId]);
-    
-    const [passengers] = await db.execute(`SELECT b.booking_id, b.assigned_bracelet, p.name as passenger_name, b.booking_status
-      FROM bookings b JOIN passengers p ON b.passenger_id = p.passenger_id
-      WHERE b.flight_id = ? AND b.assigned_bracelet IS NOT NULL`, [flightId]);
-    
-    let notificationMessage = '', notificationType = '', priority = 'Normal';
-    
-    if (status === 'Departed') {
-      for (const passenger of passengers) {
-        if (passenger.booking_status === 'Confirmed') {
-          await db.execute('UPDATE bookings SET booking_status = "Missed" WHERE booking_id = ?', [passenger.booking_id]);
-          notificationMessage = `Flight ${flight[0].flight_no} has departed. You missed your flight.`;
-          notificationType = 'MISSED_FLIGHT';
-          priority = 'High';
-          await db.execute('INSERT INTO notifications (bracelet_id, notification_type, message, priority) VALUES (?, ?, ?, ?)',
-            [passenger.assigned_bracelet, notificationType, notificationMessage, priority]);
+// Update flight status by flight_id
+app.put('/api/flights/:id/status', async (req, res) => {
+    const { id } = req.params;
+    const { gate_no, status, delay_minutes, reason } = req.body;
+
+    try {
+        await db.query(
+            `UPDATE flights 
+             SET gate_no = ?, status = ?, delay_minutes = ?, 
+                 cancellation_reason = ?
+             WHERE flight_id = ?`,
+            [gate_no, status, delay_minutes, reason, id]
+        );
+
+        const [passengers] = await db.query(
+            `SELECT b.assigned_bracelet as bracelet_id
+             FROM bookings b 
+             WHERE b.flight_id = ? AND b.assigned_bracelet IS NOT NULL`,
+            [id]
+        );
+
+        let notificationMessage = status === 'Delayed' 
+            ? `Flight Delayed: ${delay_minutes} min. Gate: ${gate_no}`
+            : status === 'Cancelled' 
+            ? `Flight Cancelled: ${reason}`
+            : `Gate Changed to ${gate_no}`;
+
+        for (const p of passengers) {
+            await db.query(
+                `INSERT INTO notifications (bracelet_id, notification_type, message, created_at)
+                 VALUES (?, 'GATE_CHANGE', ?, NOW())`,
+                [p.bracelet_id, notificationMessage]
+            );
         }
-      }
-    } else if (status === 'Delayed') {
-      notificationMessage = `Flight ${flight[0].flight_no} delayed by ${delay_minutes} minutes. New time: ${new_departure_time}`;
-      notificationType = 'FLIGHT_DELAYED';
-      priority = 'High';
-      for (const passenger of passengers) {
-        await db.execute('INSERT INTO notifications (bracelet_id, notification_type, message, priority) VALUES (?, ?, ?, ?)',
-          [passenger.assigned_bracelet, notificationType, notificationMessage, priority]);
-      }
-    } else if (status === 'Cancelled') {
-      notificationMessage = `Flight ${flight[0].flight_no} has been cancelled. ${cancellation_reason || 'Please contact airline.'}`;
-      notificationType = 'FLIGHT_CANCELLED';
-      priority = 'High';
-      for (const passenger of passengers) {
-        await db.execute('UPDATE bookings SET booking_status = "Cancelled" WHERE booking_id = ?', [passenger.booking_id]);
-        await db.execute('INSERT INTO notifications (bracelet_id, notification_type, message, priority) VALUES (?, ?, ?, ?)',
-          [passenger.assigned_bracelet, notificationType, notificationMessage, priority]);
-      }
-    } else if (status === 'Boarding') {
-      notificationMessage = `Boarding now for Flight ${flight[0].flight_no} at Gate ${flight[0].gate_no}`;
-      notificationType = 'BOARDING_CALL';
-      priority = 'High';
-      for (const passenger of passengers) {
-        if (passenger.booking_status === 'Confirmed') {
-          await db.execute('INSERT INTO notifications (bracelet_id, notification_type, message, priority) VALUES (?, ?, ?, ?)',
-            [passenger.assigned_bracelet, notificationType, notificationMessage, priority]);
-        }
-      }
+
+        res.json({
+            success: true,
+            notifications_sent: passengers.length
+        });
+
+    } catch (error) {
+        console.error('Error updating flight:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
-    
-    res.json({ message: 'Flight status updated', old_status: oldStatus, new_status: status, notifications_sent: passengers.length });
-  } catch (error) {
-    console.error('Update flight status error:', error);
-    res.status(500).json({ error: 'Failed to update flight status' });
-  }
 });
 
 // Check and mark missed flights

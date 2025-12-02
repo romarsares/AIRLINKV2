@@ -159,3 +159,27 @@ ex. 0001 - patch update no. 1 - "commit"
 - Index added for efficient active user lookups
 - Enables user deactivation without deletion for audit trail
 - Updated user authentication to check active status
+
+### Patch 0016 - 2024-12-20
+**Task**: Complete Bracelet Simulator Implementation
+**Changes**:
+- Created comprehensive bracelet simulator with 5 core files
+- Implemented real-time sync, NFC scanning, and battery simulation
+- Added passenger assignment and boarding verification
+- Included notification system and sync activity logging
+- Provided complete UI controls and visual feedback system
+
+### Patch 0017 - 2024-12-20
+**Task**: Flight & Gate Management UI Integration
+**Changes**:
+- Integrated flight management directly into main dashboard Flights tab
+- Added gate change modal with real-time updates
+- Implemented flight status updates (Scheduled, Boarding, Delayed, Cancelled, Departed)
+- Automatic passenger notifications on gate/status changes
+- Visual status badges and gate indicators
+- Auto-refresh every 30 seconds
+- Created flights.js, flights.css, and dashboard-flights-init.js
+- Added database patch-0017 for gate management support
+- Admin can now change gates when aircraft is damaged or unavailable
+- All 200 passengers notified automatically when gate changes
+- Bracelets auto-sync new gate within 30 seconds

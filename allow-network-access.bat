@@ -10,6 +10,6 @@ echo Your IP addresses:
 ipconfig | findstr IPv4
 echo.
 echo Access AirLink from other devices using:
-echo http://192.168.0.160:3000
+echo http://192.168.0.1:3000
 echo.
 pause

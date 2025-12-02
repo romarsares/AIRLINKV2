@@ -502,14 +502,29 @@ class Dashboard {
                     <td><span class="connection-badge ${connectionClass}">${bracelet.connection_status}</span></td>
                     <td>${bracelet.passenger_name || 'Unassigned'}</td>
                     <td>
-                        <button class="btn-small" onclick="dashboard.syncBracelet('${bracelet.bracelet_id}')">Sync</button>
-                        <button class="btn-small btn-danger" onclick="dashboard.deactivateBracelet('${bracelet.bracelet_id}')">Deactivate</button>
+                        <button class="btn-small" data-bracelet-id="${bracelet.bracelet_id}" data-action="sync">Sync</button>
+                        <button class="btn-small btn-danger" data-bracelet-id="${bracelet.bracelet_id}" data-action="deactivate">Deactivate</button>
                     </td>
                 </tr>
             `;
         }).join('');
         
         tbody.innerHTML = rows;
+        
+        // Add event listeners for action buttons
+        tbody.querySelectorAll('[data-action="sync"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const braceletId = e.target.dataset.braceletId;
+                this.syncBracelet(braceletId);
+            });
+        });
+        
+        tbody.querySelectorAll('[data-action="deactivate"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const braceletId = e.target.dataset.braceletId;
+                this.deactivateBracelet(braceletId);
+            });
+        });
     }
 
     // Sync individual bracelet

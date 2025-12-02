@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Flight Management</title>
+    <link rel="stylesheet" href="css/flights.css">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; }
+    </style>
+</head>
+<body>
+    <h1>Flight Management Test</h1>
+    
+    <div class="test-section">
+        <h2>Test Data</h2>
+        <button onclick="loadTestData()">Load Test Flights</button>
+        <button onclick="testModal()">Test Modal</button>
+    </div>
+
+    <div class="flights-table">
+        <table id="flightsTable">
+            <thead>
+                <tr>
+                    <th>Flight No</th>
+                    <th>Destination</th>
+                    <th>Gate</th>
+                    <th>Departure</th>
+                    <th>Status</th>
+                    <th>Passengers</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="flightsTableBody">
+                <tr><td colspan="7">Click "Load Test Flights" to see data</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div id="gateChangeModal" class="modal">
+        <div class="modal-content">
+            <h3>Update Flight</h3>
+            <form id="gateChangeForm">
+                <input type="hidden" id="flightId">
+                
+                <div class="form-group">
+                    <label>Flight Number</label>
+                    <input type="text" id="flightNumber" readonly>
+                </div>
+                
+                <div class="form-group">
+                    <label>Gate Number</label>
+                    <input type="text" id="newGate" required placeholder="e.g., G5">
+                </div>
+                
+                <div class="form-group">
+                    <label>Flight Status</label>
+                    <select id="flightStatus" required>
+                        <option value="Scheduled">Scheduled</option>
+                        <option value="Boarding">Boarding</option>
+                        <option value="Delayed">Delayed</option>
+                        <option value="Cancelled">Cancelled</option>
+                        <option value="Departed">Departed</option>
+                    </select>
+                </div>
+                
+                <div class="form-group" id="delayGroup" style="display:none;">
+                    <label>Delay Minutes</label>
+                    <input type="number" id="delayMinutes" min="0">
+                </div>
+                
+                <div class="form-group" id="reasonGroup" style="display:none;">
+                    <label>Reason</label>
+                    <textarea id="changeReason" rows="3"></textarea>
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="submit" class="btn-primary">Update Flight</button>
+                    <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function loadTestData() {
+            const testFlights = [
+                { flight_id: 1, flight_no: 'PR123', destination: 'Manila', gate_no: 'G1', departure_time: '2024-12-20 14:30:00', status: 'Scheduled', passenger_count: 20 },
+                { flight_id: 2, flight_no: 'PR456', destination: 'Cebu', gate_no: 'G2', departure_time: '2024-12-20 15:00:00', status: 'Boarding', passenger_count: 18 },
+                { flight_id: 3, flight_no: 'PR789', destination: 'Davao', gate_no: 'G3', departure_time: '2024-12-20 16:00:00', status: 'Delayed', passenger_count: 22 }
+            ];
+            
+            displayFlights(testFlights);
+        }
+
+        function displayFlights(flights) {
+            const tbody = document.getElementById('flightsTableBody');
+            tbody.innerHTML = flights.map(flight => `
+                <tr>
+                    <td><strong>${flight.flight_no}</strong></td>
+                    <td>${flight.destination}</td>
+                    <td><span class="gate-badge">${flight.gate_no}</span></td>
+                    <td>${formatTime(flight.departure_time)}</td>
+                    <td><span class="status-badge ${flight.status.toLowerCase()}">${flight.status}</span></td>
+                    <td>${flight.passenger_count}</td>
+                    <td>
+                        <button onclick="openModal(${flight.flight_id}, '${flight.flight_no}', '${flight.gate_no}', '${flight.status}')" 
+                                class="btn-small">Update</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function openModal(flightId, flightNo, gate, status) {
+            console.log('Opening modal:', flightId, flightNo, gate, status);
+            document.getElementById('flightId').value = flightId;
+            document.getElementById('flightNumber').value = flightNo;
+            document.getElementById('newGate').value = gate;
+            document.getElementById('flightStatus').value = status;
+            document.getElementById('gateChangeModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('gateChangeModal').style.display = 'none';
+        }
+
+        function testModal() {
+            openModal(999, 'TEST123', 'G9', 'Scheduled');
+        }
+
+        function formatTime(timeString) {
+            const date = new Date(timeString);
+            return date.toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        document.getElementById('flightStatus').addEventListener('change', (e) => {
+            const status = e.target.value;
+            document.getElementById('delayGroup').style.display = status === 'Delayed' ? 'block' : 'none';
+            document.getElementById('reasonGroup').style.display = ['Delayed', 'Cancelled'].includes(status) ? 'block' : 'none';
+        });
+
+        document.getElementById('gateChangeForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            alert('Form submitted! (Test mode - no API call)');
+            closeModal();
+        });
+    </script>
+</body>
+</html>
